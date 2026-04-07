@@ -1,0 +1,37 @@
+.insights-top {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.insights-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.ontime-card {
+  border-left: 4px solid #155724;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  h3 { margin-bottom: 20px; }
+}
+
+.ontime-value {
+  font-size: 56px;
+  font-weight: 900;
+  padding: 12px 24px;
+  margin-bottom: 12px;
+}
+
+.ontime-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
