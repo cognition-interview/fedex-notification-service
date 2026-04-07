@@ -1,0 +1,22 @@
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stats-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tracking-num {
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.view-all {
+  padding: 12px 0 4px;
+  font-size: 13px;
+  a { color: #4d148c; font-weight: 600; }
+}

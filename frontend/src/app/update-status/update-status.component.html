@@ -1,0 +1,106 @@
+<div class="page-header">
+  <h1>Update Order Status</h1>
+  <p>Look up an order and advance it to the next allowed state</p>
+</div>
+
+<!-- Lookup -->
+<div class="card">
+  <h3>Order Lookup</h3>
+  <div class="lookup-row">
+    <input
+      type="text"
+      [(ngModel)]="trackingInput"
+      placeholder="Enter tracking number (e.g. 7489 2301 4456)"
+      style="flex: 1; min-width: 280px"
+      (keyup.enter)="lookup()"
+    />
+    <button class="btn" (click)="lookup()" [disabled]="looking || !trackingInput.trim()">
+      @if (looking) { Looking up... } @else { Look Up Order }
+    </button>
+  </div>
+  @if (lookupError) {
+    <div class="error-msg">{{ lookupError }}</div>
+  }
+</div>
+
+<!-- Order found -->
+@if (order) {
+  <div class="card order-found">
+    <h3>Order Found</h3>
+    <div class="order-summary">
+      <div class="sum-row">
+        <span class="sum-label">Tracking #</span>
+        <span class="sum-value monospace">{{ order.tracking_number }}</span>
+      </div>
+      <div class="sum-row">
+        <span class="sum-label">Current Status</span>
+        <span class="sum-value"><span [class]="statusClass(order.status)">{{ order.status }}</span></span>
+      </div>
+      <div class="sum-row">
+        <span class="sum-label">Route</span>
+        <span class="sum-value">{{ order.origin }} → {{ order.destination }}</span>
+      </div>
+      <div class="sum-row">
+        <span class="sum-label">Service</span>
+        <span class="sum-value">{{ order.service_type }}</span>
+      </div>
+      <div class="sum-row">
+        <span class="sum-label">Est. Delivery</span>
+        <span class="sum-value">{{ formatDate(order.estimated_delivery) }}</span>
+      </div>
+    </div>
+  </div>
+
+  @if (allowedTransitions.length === 0) {
+    <div class="card terminal">
+      <strong>No further transitions available.</strong>
+      This order has reached its final state: <span [class]="statusClass(order.status)">{{ order.status }}</span>
+    </div>
+  } @else {
+    <div class="card">
+      <h3>Update Status</h3>
+
+      <div class="form-group">
+        <label>New Status <span class="required">*</span></label>
+        <div class="transition-buttons">
+          @for (s of allowedTransitions; track s) {
+            <button
+              class="transition-btn"
+              [class.selected]="newStatus === s"
+              (click)="newStatus = s"
+            >
+              {{ order.status }} → {{ s }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" [(ngModel)]="location" placeholder="e.g. Memphis, TN" style="width: 100%" />
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" [(ngModel)]="description" placeholder="e.g. Package arrived at facility" style="width: 100%" />
+      </div>
+
+      @if (submitError) {
+        <div class="error-msg">{{ submitError }}</div>
+      }
+      @if (successMessage) {
+        <div class="success-msg">✓ {{ successMessage }}</div>
+      }
+
+      <div style="margin-top: 16px;">
+        <button
+          class="btn btn-orange"
+          (click)="submit()"
+          [disabled]="!newStatus || submitting"
+        >
+          @if (submitting) { Updating... } @else { Update Status }
+        </button>
+      </div>
+    </div>
+  }
+}

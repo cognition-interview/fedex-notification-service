@@ -1,0 +1,81 @@
+<div class="page-header">
+  <h1>Insights</h1>
+  <p>Delivery performance analytics</p>
+</div>
+
+@if (loading) {
+  <div class="no-data">Loading insights...</div>
+} @else if (insights) {
+
+  <div class="insights-top">
+    <!-- On-time % -->
+    <div class="card ontime-card" [style.border-left-color]="onTimeColor">
+      <h3>On-Time Delivery Rate</h3>
+      <div class="ontime-value" [style.color]="onTimeColor" [style.background]="onTimeBg">
+        {{ insights.on_time_percentage }}%
+      </div>
+      <div class="ontime-label">
+        @if (insights.on_time_percentage >= 90) { Excellent performance }
+        @else if (insights.on_time_percentage >= 70) { Acceptable — room to improve }
+        @else { Below target — action required }
+      </div>
+    </div>
+
+    <!-- Avg delivery time bar chart -->
+    <div class="card">
+      <h3>Avg Delivery Time by Service Type</h3>
+      <canvas baseChart
+        [data]="barChartData"
+        [options]="barChartOptions"
+        type="bar">
+      </canvas>
+    </div>
+  </div>
+
+  <div class="insights-bottom">
+    <!-- Volume line chart -->
+    <div class="card">
+      <h3>Delivery Volume (Last 30 Days)</h3>
+      <canvas baseChart
+        [data]="lineChartData"
+        [options]="lineChartOptions"
+        type="line">
+      </canvas>
+    </div>
+
+    <!-- Delay breakdown doughnut -->
+    <div class="card">
+      <h3>Delay Breakdown</h3>
+      <canvas baseChart
+        [data]="doughnutChartData"
+        [options]="doughnutChartOptions"
+        type="doughnut">
+      </canvas>
+    </div>
+  </div>
+
+  <!-- Top routes table -->
+  <div class="card">
+    <h3>Top Routes by Volume</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Origin</th>
+          <th>Destination</th>
+          <th>Shipments</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (route of insights.top_routes; track route.origin + route.destination; let i = $index) {
+          <tr>
+            <td>{{ i + 1 }}</td>
+            <td>{{ route.origin }}</td>
+            <td>{{ route.destination }}</td>
+            <td><strong>{{ route.count }}</strong></td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

@@ -1,0 +1,91 @@
+<div class="breadcrumb">
+  <a routerLink="/orders">Orders</a>
+  <span class="sep">›</span>
+  <span>{{ order?.tracking_number ?? 'Loading...' }}</span>
+</div>
+
+@if (loading) {
+  <div class="no-data">Loading order...</div>
+} @else if (notFound) {
+  <div class="no-data">Order not found.</div>
+} @else if (order) {
+
+  <!-- Header card -->
+  <div class="card header-card">
+    <div class="header-row">
+      <div>
+        <div class="tracking-big">{{ order.tracking_number }}</div>
+        <div class="header-meta">
+          <span [class]="statusClass(order.status)">{{ order.status }}</span>
+          <span class="meta-sep">|</span>
+          <span>{{ order.service_type }}</span>
+          <span class="meta-sep">|</span>
+          <span>{{ order.weight_lbs }} lbs</span>
+        </div>
+      </div>
+      <a routerLink="/orders" class="btn btn-outline btn-sm">← Back to Orders</a>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- Route Info -->
+    <div class="card">
+      <h3>Shipment Details</h3>
+      <div class="detail-grid">
+        <div class="detail-row">
+          <span class="dl">Origin</span>
+          <span class="dv">{{ order.origin }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">Destination</span>
+          <span class="dv">{{ order.destination }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">Est. Delivery</span>
+          <span class="dv">{{ formatDate(order.estimated_delivery) }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">Actual Delivery</span>
+          <span class="dv" [class.delivered]="order.actual_delivery">
+            {{ formatDate(order.actual_delivery) }}
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">Last Updated</span>
+          <span class="dv">{{ formatDateTime(order.updated_at) }}</span>
+        </div>
+        @if (business) {
+          <div class="detail-row">
+            <span class="dl">Business</span>
+            <span class="dv">{{ business.name }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">Account #</span>
+            <span class="dv monospace">{{ business.account_number }}</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card">
+      <h3>Shipment Timeline</h3>
+      @if (sortedEvents.length === 0) {
+        <div class="no-data" style="padding: 20px 0">No events recorded.</div>
+      } @else {
+        <div class="timeline">
+          @for (event of sortedEvents; track event.id; let i = $index) {
+            <div class="timeline-item" [class.latest]="i === 0">
+              <div class="tl-time">{{ formatDateTime(event.occurred_at) }}</div>
+              <div class="tl-event">{{ event.event_type }}</div>
+              <div class="tl-loc">{{ event.location }}</div>
+              @if (event.description) {
+                <div class="tl-desc">{{ event.description }}</div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}
