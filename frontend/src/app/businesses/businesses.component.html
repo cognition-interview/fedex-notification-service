@@ -1,0 +1,47 @@
+<div class="page-header">
+  <h1>Businesses</h1>
+  <p>{{ total }} registered FedEx business account(s)</p>
+</div>
+
+@if (loading) {
+  <div class="no-data">Loading...</div>
+} @else {
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th>Business Name</th>
+          <th>Account #</th>
+          <th>Address</th>
+          <th>Contact Email</th>
+          <th>Phone</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (b of businesses; track b.id) {
+          <tr>
+            <td><strong>{{ b.name }}</strong></td>
+            <td class="monospace">{{ b.account_number }}</td>
+            <td>{{ b.address }}</td>
+            <td>{{ b.contact_email }}</td>
+            <td>{{ b.phone }}</td>
+            <td>
+              <button class="btn btn-sm btn-outline" (click)="viewOrders(b.id); $event.stopPropagation()">
+                View Orders →
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  @if (total > limit) {
+    <div class="pagination">
+      <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
+      <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
+      <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
+    </div>
+  }
+}

@@ -1,0 +1,75 @@
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Shipment overview across all active orders</p>
+</div>
+
+@if (stats) {
+  <div class="stats-grid">
+    <div class="summary-card card-blue">
+      <div class="card-label">Total Orders</div>
+      <div class="card-value">{{ stats.total }}</div>
+    </div>
+    <div class="summary-card card-orange">
+      <div class="card-label">In Transit</div>
+      <div class="card-value">{{ stats.in_transit }}</div>
+    </div>
+    <div class="summary-card card-green">
+      <div class="card-label">Delivered</div>
+      <div class="card-value">{{ stats.delivered }}</div>
+    </div>
+    <div class="summary-card card-red">
+      <div class="card-label">Delayed / Exception</div>
+      <div class="card-value">{{ stats.delayed + stats.exception }}</div>
+    </div>
+  </div>
+
+  <div class="stats-grid stats-grid-3">
+    <div class="summary-card">
+      <div class="card-label">Out for Delivery</div>
+      <div class="card-value">{{ stats.out_for_delivery }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="card-label">Picked Up</div>
+      <div class="card-value">{{ stats.picked_up }}</div>
+    </div>
+    <div class="summary-card card-red">
+      <div class="card-label">Exceptions</div>
+      <div class="card-value">{{ stats.exception }}</div>
+    </div>
+  </div>
+}
+
+<div class="card">
+  <h3>Recent Orders</h3>
+  @if (loading) {
+    <div class="no-data">Loading...</div>
+  } @else if (recentOrders.length === 0) {
+    <div class="no-data">No orders found.</div>
+  } @else {
+    <table>
+      <thead>
+        <tr>
+          <th>Tracking #</th>
+          <th>Route</th>
+          <th>Status</th>
+          <th>Service</th>
+          <th>Est. Delivery</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (order of recentOrders; track order.id) {
+          <tr [routerLink]="['/orders', order.id]">
+            <td class="tracking-num">{{ order.tracking_number }}</td>
+            <td>{{ order.origin }} → {{ order.destination }}</td>
+            <td><span [class]="statusClass(order.status)">{{ order.status }}</span></td>
+            <td>{{ order.service_type }}</td>
+            <td>{{ formatDate(order.estimated_delivery) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <div class="view-all">
+      <a routerLink="/orders">View all orders →</a>
+    </div>
+  }
+</div>

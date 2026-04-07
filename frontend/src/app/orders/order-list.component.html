@@ -1,0 +1,73 @@
+<div class="page-header">
+  <h1>Orders</h1>
+  <p>{{ total }} order(s) found</p>
+</div>
+
+<div class="filter-bar">
+  <label>Status:</label>
+  <select [(ngModel)]="filterStatus" (change)="applyFilters()">
+    <option value="">All Statuses</option>
+    @for (s of statuses; track s) {
+      <option [value]="s">{{ s }}</option>
+    }
+  </select>
+
+  <label>Service:</label>
+  <select [(ngModel)]="filterServiceType" (change)="applyFilters()">
+    <option value="">All Services</option>
+    @for (st of serviceTypes; track st) {
+      <option [value]="st">{{ st }}</option>
+    }
+  </select>
+
+  <label>Search:</label>
+  <input type="text" [(ngModel)]="filterSearch" placeholder="Tracking number, origin, destination..."
+    (keyup.enter)="applyFilters()" style="min-width: 240px" />
+  <button class="btn btn-sm" (click)="applyFilters()">Search</button>
+
+</div>
+
+<div class="card" style="padding: 0; overflow: hidden;">
+  @if (loading) {
+    <div class="no-data">Loading...</div>
+  } @else if (orders.length === 0) {
+    <div class="no-data">No orders match the current filters.</div>
+  } @else {
+    <table>
+      <thead>
+        <tr>
+          <th>Tracking #</th>
+          <th>Business</th>
+          <th>Origin</th>
+          <th>Destination</th>
+          <th>Status</th>
+          <th>Service</th>
+          <th>Weight</th>
+          <th>Est. Delivery</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (order of orders; track order.id) {
+          <tr [routerLink]="['/orders', order.id]">
+            <td class="tracking-num">{{ order.tracking_number }}</td>
+            <td>{{ order.business_id | slice:0:7 }}...</td>
+            <td>{{ order.origin }}</td>
+            <td>{{ order.destination }}</td>
+            <td><span [class]="statusClass(order.status)">{{ order.status }}</span></td>
+            <td>{{ order.service_type }}</td>
+            <td>{{ order.weight_lbs }} lbs</td>
+            <td>{{ formatDate(order.estimated_delivery) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>
+
+@if (total > limit) {
+  <div class="pagination">
+    <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
+    <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
+    <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
+  </div>
+}
