@@ -43,6 +43,24 @@
     },
     "communicationServiceDataLocation": {
       "value": "unitedstates"
+    },
+    "synapseWorkspaceName": {
+      "value": "fedexsynapseus"
+    },
+    "synapseSqlAdminLogin": {
+      "value": "sqladminuser"
+    },
+    "synapseStorageAccountName": {
+      "value": "fedexstorageus"
+    },
+    "synapseStorageFilesystem": {
+      "value": "synapse"
+    },
+    "synapseDedicatedPoolName": {
+      "value": "fedexpool"
+    },
+    "synapseDedicatedPoolSku": {
+      "value": "DW100c"
     }
   }
 }
