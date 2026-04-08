@@ -70,13 +70,18 @@ jobs:
             if [ -z "$EXISTS" ]; then
               echo "==> VM not found, creating..."
 
+              # Generate a random password — SSH is never used, only az run-command
+              VM_PASSWORD=$(openssl rand -base64 32)
+
               az vm create \
-                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-                --name           "${{ vars.AZURE_VM_NAME }}" \
-                --image          Ubuntu2404 \
-                --size           Standard_B2s \
-                --generate-ssh-keys \
-                --public-ip-sku  Standard
+                --resource-group      "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                --name                "${{ vars.AZURE_VM_NAME }}" \
+                --image               Ubuntu2404 \
+                --size                Standard_B2s \
+                --admin-username      azureuser \
+                --admin-password      "$VM_PASSWORD" \
+                --authentication-type password \
+                --public-ip-sku       Standard
 
               az vm open-port \
                 --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
