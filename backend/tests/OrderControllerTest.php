@@ -82,11 +82,11 @@ class OrderControllerTest extends TestCase
 
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertArrayHasKey('data', $body);
-        $this->assertArrayHasKey('meta', $body);
-        $this->assertCount(2, $body['data']);
-        $this->assertSame(2, $body['meta']['total']);
-        $this->assertSame(1, $body['meta']['page']);
+        $this->assertArrayHasKey('orders', $body);
+        $this->assertArrayHasKey('total', $body);
+        $this->assertCount(2, $body['orders']);
+        $this->assertSame(2, $body['total']);
+        $this->assertSame(1, $body['page']);
     }
 
     public function testGetOrdersFilteredByBusinessId(): void
@@ -105,7 +105,7 @@ class OrderControllerTest extends TestCase
         $result = $controller->getOrders($request, $response);
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertSame(0, $body['meta']['total']);
+        $this->assertSame(0, $body['total']);
     }
 
     public function testGetOrdersRespectsPagination(): void
@@ -123,8 +123,8 @@ class OrderControllerTest extends TestCase
 
         $result = $controller->getOrders($request, $response);
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertSame(3, $body['meta']['page']);
-        $this->assertSame(5, $body['meta']['limit']);
+        $this->assertSame(3, $body['page']);
+        $this->assertSame(5, $body['limit']);
     }
 
     // ── GET /api/orders/{id} ──────────────────────────────────────────────────
@@ -158,8 +158,8 @@ class OrderControllerTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertSame('ord-001', $body['id']);
         $this->assertSame('7489001', $body['tracking_number']);
-        $this->assertArrayHasKey('events', $body);
-        $this->assertCount(1, $body['events']);
+        $this->assertArrayHasKey('shipment_events', $body);
+        $this->assertCount(1, $body['shipment_events']);
     }
 
     public function testGetOrderByIdReturns404ForMissing(): void

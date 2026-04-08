@@ -62,10 +62,10 @@ class NotificationControllerTest extends TestCase
 
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertArrayHasKey('data', $body);
-        $this->assertArrayHasKey('meta', $body);
-        $this->assertCount(2, $body['data']);
-        $this->assertSame(2, $body['meta']['total']);
+        $this->assertArrayHasKey('notifications', $body);
+        $this->assertArrayHasKey('total', $body);
+        $this->assertCount(2, $body['notifications']);
+        $this->assertSame(2, $body['total']);
     }
 
     public function testGetNotificationsFilteredByBusinessAndUnread(): void
@@ -93,8 +93,8 @@ class NotificationControllerTest extends TestCase
 
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertCount(1, $body['data']);
-        $this->assertFalse($body['data'][0]['is_read']);
+        $this->assertCount(1, $body['notifications']);
+        $this->assertFalse($body['notifications'][0]['is_read']);
     }
 
     // ── PATCH /api/notifications/{id}/read ───────────────────────────────────
@@ -140,9 +140,14 @@ class NotificationControllerTest extends TestCase
         $this->assertSame(404, $result->getStatusCode());
     }
 
-    public function testMarkAllNotificationsReadRequiresBusinessId(): void
+    public function testMarkAllNotificationsReadWithoutBusinessIdUpdatesAll(): void
     {
+        $stmt = $this->createMock(\PDOStatement::class);
+        $stmt->method('execute')->willReturn(true);
+        $stmt->method('rowCount')->willReturn(10);
+
         $pdo = $this->createMock(\PDO::class);
+        $pdo->method('prepare')->willReturn($stmt);
         Database::setTestInstance($pdo);
 
         $factory  = new ServerRequestFactory();
@@ -151,7 +156,10 @@ class NotificationControllerTest extends TestCase
         $response = new Response();
 
         $result = (new NotificationController())->markAllRead($request, $response);
-        $this->assertSame(422, $result->getStatusCode());
+        $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertArrayHasKey('updated', $body);
+        $this->assertSame(10, $body['updated']);
     }
 
     public function testMarkAllNotificationsReadUpdatesRows(): void
