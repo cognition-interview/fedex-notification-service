@@ -1,25 +1,5 @@
 name: Deploy to Azure VM (On-Prem)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Required GitHub Secrets (Settings → Secrets and variables → Actions):
-#
-#   Service principal (for Azure CLI):
-#     AZURE_APP_ID          – service principal client ID
-#     AZURE_PASSWORD        – service principal client secret
-#     AZURE_TENANT_ID       – Azure AD tenant ID
-#
-#   Application secrets (written to .env on the VM):
-#     AZURE_EMAIL_CONNECTION_STRING
-#     AZURE_EMAIL_FROM_ADDRESS
-#     POSTGRES_CONNECTION_STRING
-#
-# Required GitHub Variables (Settings → Secrets and variables → Actions → Variables):
-#     AZURE_SUBSCRIPTION_ID – Azure subscription ID
-#     AZURE_RESOURCE_GROUP  – resource group containing the VM
-#     AZURE_VM_NAME         – name of the target VM
-#     APP_REPO_URL          – HTTPS clone URL of this repo (for first-run clone)
-# ─────────────────────────────────────────────────────────────────────────────
-
 on:
   push:
     branches: [main]
@@ -30,37 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Debug: print lengths of all secrets/vars (never prints values) ─
-      - name: Debug secret lengths
-        run: |
-          echo "AZURE_APP_ID                  length: ${#APP_ID}"
-          echo "AZURE_PASSWORD                length: ${#PASSWORD}"
-          echo "AZURE_TENANT_ID               length: ${#TENANT_ID}"
-          echo "AZURE_SUBSCRIPTION_ID         length: ${#SUB_ID}"
-          echo "AZURE_EMAIL_CONNECTION_STRING length: ${#EMAIL_CS}"
-          echo "AZURE_EMAIL_FROM_ADDRESS      length: ${#EMAIL_FROM}"
-          echo "POSTGRES_CONNECTION_STRING    length: ${#PG_CS}"
-        env:
-          APP_ID:     ${{ secrets.AZURE_APP_ID }}
-          PASSWORD:   ${{ secrets.AZURE_PASSWORD }}
-          TENANT_ID:  ${{ secrets.AZURE_TENANT_ID }}
-          SUB_ID:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          EMAIL_CS:   ${{ secrets.AZURE_EMAIL_CONNECTION_STRING }}
-          EMAIL_FROM: ${{ secrets.AZURE_EMAIL_FROM_ADDRESS }}
-          PG_CS:      ${{ secrets.POSTGRES_CONNECTION_STRING }}
-
-      # ── 2. Login to Azure ────────────────────────────────────────────────
-      #       After this step the runner's az CLI is authenticated —
-      #       no need for the azure/CLI@v2 Docker wrapper below.
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
           auth-type: SERVICE_PRINCIPAL
 
-      # ── 3. Base64-encode the .env so special characters survive transfer ─
-      #       (Azure connection strings commonly contain = ; @ : which would
-      #        break naive shell interpolation)
       - name: Encode .env payload
         id: env_payload
         run: |
@@ -71,10 +26,6 @@ jobs:
             | base64 -w0)
           echo "value=$ENV_B64" >> "$GITHUB_OUTPUT"
 
-      # ── 5. Write the VM script to a temp file, then invoke it ────────────
-      #       Writing to a file first avoids heredoc-inside-quoted-string
-      #       issues and keeps the script readable without escaping.
-      #       run-command executes as root on the VM; no SSH key needed.
       - name: Provision & deploy on VM
         run: |
           cat > /tmp/vm-deploy.sh << 'VMSCRIPT'
@@ -87,51 +38,35 @@ jobs:
 
           APP_DIR=/var/www/app
           WEB_ROOT=/var/www/html
-          REPO_URL='${{ vars.APP_REPO_URL }}'
+          REPO_URL='https://github.com/${{ github.repository }}.git'
 
-          # ════════════════════════════════════════════════════════════════
-          # PROVISION (idempotent — skipped on subsequent runs)
-          # ════════════════════════════════════════════════════════════════
+          # ── Provision (idempotent) ─────────────────────────────────────
 
-          # ── System packages ──────────────────────────────────────────
           if ! command -v nginx &>/dev/null; then
-            echo '==> Installing nginx'
-            apt-get update -q
-            apt-get install -y -q nginx rsync git
+            apt-get update -q && apt-get install -y -q nginx rsync git
           fi
 
           if ! systemctl is-active --quiet php8.3-fpm; then
-            echo '==> Installing PHP 8.3'
             apt-get update -q
             apt-get install -y -q software-properties-common
             add-apt-repository -y ppa:ondrej/php
             apt-get update -q
-            apt-get install -y -q \
-              php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
+            apt-get install -y -q php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
           fi
 
-          if ! command -v composer &>/dev/null; then
-            echo '==> Installing Composer'
-            curl -fsSL https://getcomposer.org/installer \
-              | php -- --install-dir=/usr/local/bin --filename=composer
-          fi
+          command -v composer &>/dev/null || curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
           if ! command -v node &>/dev/null; then
-            echo '==> Installing Node 22'
             curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
             apt-get install -y -q nodejs
           fi
 
-          # ── Clone repo (first run only) ──────────────────────────────
           if [ ! -d "$APP_DIR/.git" ]; then
-            echo '==> Cloning repository'
             mkdir -p "$APP_DIR" "$WEB_ROOT"
             git clone "$REPO_URL" "$APP_DIR"
           fi
 
-          # ── nginx site config (first run only) ──────────────────────
           if [ ! -f /etc/nginx/sites-available/app ]; then
-            echo '==> Configuring nginx'
             cat > /etc/nginx/sites-available/app << 'NGINX'
           server {
               listen 80;
@@ -158,49 +93,26 @@ jobs:
             nginx -t
           fi
 
-          # ── Enable services (first run only) ────────────────────────
           systemctl enable --now php8.3-fpm
           systemctl enable --now nginx
 
-          # ════════════════════════════════════════════════════════════════
-          # DEPLOY
-          # ════════════════════════════════════════════════════════════════
+          # ── Deploy ─────────────────────────────────────────────────────
 
-          # ── Write .env (decoded from base64 arg) ────────────────────
-          echo '==> Writing .env'
           echo "$1" | base64 -d > "$APP_DIR/.env"
           chmod 600 "$APP_DIR/.env"
 
-          # ── Pull latest code ─────────────────────────────────────────
-          echo '==> Pulling latest code'
           git -C "$APP_DIR" pull origin main
 
-          # ── PHP dependencies ─────────────────────────────────────────
-          echo '==> Installing PHP dependencies'
-          composer install \
-            --working-dir="$APP_DIR/backend" \
-            --no-dev \
-            --no-interaction \
-            --optimize-autoloader
+          composer install --working-dir="$APP_DIR/backend" --no-dev --no-interaction --optimize-autoloader
 
-          # ── Build Angular ────────────────────────────────────────────
-          echo '==> Building Angular frontend'
           cd "$APP_DIR/frontend"
           npm ci
           npm run build
 
-          # ── Publish frontend to nginx web root ───────────────────────
-          echo '==> Publishing frontend'
-          rsync -a --delete \
-            "$APP_DIR/frontend/dist/frontend/browser/" \
-            "$WEB_ROOT/"
+          rsync -a --delete "$APP_DIR/frontend/dist/frontend/browser/" "$WEB_ROOT/"
 
-          # ── Reload services ──────────────────────────────────────────
-          echo '==> Reloading services'
           systemctl reload php8.3-fpm
           systemctl reload nginx
-
-          echo "==> Deployment complete ($(date -u))"
           VMSCRIPT
 
           az vm run-command invoke \
