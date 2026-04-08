@@ -52,137 +52,140 @@ jobs:
             | base64 -w0)
           echo "value=$ENV_B64" >> "$GITHUB_OUTPUT"
 
-      # ── 3. Provision (idempotent) + Deploy ───────────────────────────────
+      # ── 3. Write the VM script to a temp file, then invoke it ────────────
+      #       Writing to a file first avoids heredoc-inside-quoted-string
+      #       issues and keeps the script readable without escaping.
       #       run-command executes as root on the VM; no SSH key needed.
-      #       Setup steps are all idempotent — they're no-ops after the first run.
       - name: Provision & deploy on VM
         uses: azure/CLI@v2
         with:
           azcliversion: latest
           inlineScript: |
+            cat > /tmp/vm-deploy.sh << 'VMSCRIPT'
+            #!/bin/bash
+            set -euo pipefail
+
+            APP_DIR=/var/www/app
+            WEB_ROOT=/var/www/html
+            REPO_URL='${{ vars.APP_REPO_URL }}'
+
+            # ════════════════════════════════════════════════════════════════
+            # PROVISION (idempotent — skipped on subsequent runs)
+            # ════════════════════════════════════════════════════════════════
+
+            # ── System packages ──────────────────────────────────────────
+            if ! command -v nginx &>/dev/null; then
+              echo '==> Installing nginx'
+              apt-get update -q
+              apt-get install -y -q nginx rsync git
+            fi
+
+            if ! systemctl is-active --quiet php8.3-fpm; then
+              echo '==> Installing PHP 8.3'
+              apt-get update -q
+              apt-get install -y -q software-properties-common
+              add-apt-repository -y ppa:ondrej/php
+              apt-get update -q
+              apt-get install -y -q \
+                php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
+            fi
+
+            if ! command -v composer &>/dev/null; then
+              echo '==> Installing Composer'
+              curl -fsSL https://getcomposer.org/installer \
+                | php -- --install-dir=/usr/local/bin --filename=composer
+            fi
+
+            if ! command -v node &>/dev/null; then
+              echo '==> Installing Node 22'
+              curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+              apt-get install -y -q nodejs
+            fi
+
+            # ── Clone repo (first run only) ──────────────────────────────
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo '==> Cloning repository'
+              mkdir -p "$APP_DIR" "$WEB_ROOT"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            # ── nginx site config (first run only) ──────────────────────
+            if [ ! -f /etc/nginx/sites-available/app ]; then
+              echo '==> Configuring nginx'
+              cat > /etc/nginx/sites-available/app << 'NGINX'
+            server {
+                listen 80;
+                server_name _;
+
+                root /var/www/html;
+                index index.html;
+
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+
+                location /api {
+                    root /var/www/app/backend/public;
+                    fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+                    fastcgi_index index.php;
+                    fastcgi_param SCRIPT_FILENAME /var/www/app/backend/public/index.php;
+                    include fastcgi_params;
+                }
+            }
+            NGINX
+              ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app
+              rm -f /etc/nginx/sites-enabled/default
+              nginx -t
+            fi
+
+            # ── Enable services (first run only) ────────────────────────
+            systemctl enable --now php8.3-fpm
+            systemctl enable --now nginx
+
+            # ════════════════════════════════════════════════════════════════
+            # DEPLOY
+            # ════════════════════════════════════════════════════════════════
+
+            # ── Write .env (decoded from base64 arg) ────────────────────
+            echo '==> Writing .env'
+            echo "$1" | base64 -d > "$APP_DIR/.env"
+            chmod 600 "$APP_DIR/.env"
+
+            # ── Pull latest code ─────────────────────────────────────────
+            echo '==> Pulling latest code'
+            git -C "$APP_DIR" pull origin main
+
+            # ── PHP dependencies ─────────────────────────────────────────
+            echo '==> Installing PHP dependencies'
+            composer install \
+              --working-dir="$APP_DIR/backend" \
+              --no-dev \
+              --no-interaction \
+              --optimize-autoloader
+
+            # ── Build Angular ────────────────────────────────────────────
+            echo '==> Building Angular frontend'
+            cd "$APP_DIR/frontend"
+            npm ci
+            npm run build
+
+            # ── Publish frontend to nginx web root ───────────────────────
+            echo '==> Publishing frontend'
+            rsync -a --delete \
+              "$APP_DIR/frontend/dist/frontend/browser/" \
+              "$WEB_ROOT/"
+
+            # ── Reload services ──────────────────────────────────────────
+            echo '==> Reloading services'
+            systemctl reload php8.3-fpm
+            systemctl reload nginx
+
+            echo "==> Deployment complete ($(date -u))"
+            VMSCRIPT
+
             az vm run-command invoke \
               --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
               --name           "${{ vars.AZURE_VM_NAME }}" \
               --command-id     RunShellScript \
               --parameters     "${{ steps.env_payload.outputs.value }}" \
-              --scripts        "
-                #!/bin/bash
-                set -euo pipefail
-
-                APP_DIR=/var/www/app
-                WEB_ROOT=/var/www/html
-                REPO_URL='${{ vars.APP_REPO_URL }}'
-
-                # ════════════════════════════════════════════════════════════
-                # PROVISION (idempotent — skipped on subsequent runs)
-                # ════════════════════════════════════════════════════════════
-
-                # ── System packages ───────────────────────────────────────
-                if ! command -v nginx &>/dev/null; then
-                  echo '==> Installing nginx'
-                  apt-get update -q
-                  apt-get install -y -q nginx rsync git
-                fi
-
-                if ! command -v php8.3-fpm &>/dev/null && ! systemctl is-active --quiet php8.3-fpm; then
-                  echo '==> Installing PHP 8.3'
-                  apt-get update -q
-                  apt-get install -y -q software-properties-common
-                  add-apt-repository -y ppa:ondrej/php
-                  apt-get update -q
-                  apt-get install -y -q \
-                    php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
-                fi
-
-                if ! command -v composer &>/dev/null; then
-                  echo '==> Installing Composer'
-                  curl -fsSL https://getcomposer.org/installer \
-                    | php -- --install-dir=/usr/local/bin --filename=composer
-                fi
-
-                if ! command -v node &>/dev/null; then
-                  echo '==> Installing Node 22'
-                  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-                  apt-get install -y -q nodejs
-                fi
-
-                # ── Clone repo (first run only) ───────────────────────────
-                if [ ! -d \"\$APP_DIR/.git\" ]; then
-                  echo '==> Cloning repository'
-                  mkdir -p \"\$APP_DIR\" \"\$WEB_ROOT\"
-                  git clone \"\$REPO_URL\" \"\$APP_DIR\"
-                fi
-
-                # ── nginx site config (first run only) ────────────────────
-                if [ ! -f /etc/nginx/sites-available/app ]; then
-                  echo '==> Configuring nginx'
-                  cat > /etc/nginx/sites-available/app << 'NGINX'
-server {
-    listen 80;
-    server_name _;
-
-    root /var/www/html;
-    index index.html;
-
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    location /api {
-        root /var/www/app/backend/public;
-        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME /var/www/app/backend/public/index.php;
-        include fastcgi_params;
-    }
-}
-NGINX
-                  ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app
-                  rm -f /etc/nginx/sites-enabled/default
-                  nginx -t
-                fi
-
-                # ── Enable services (first run only) ─────────────────────
-                systemctl enable --now php8.3-fpm
-                systemctl enable --now nginx
-
-                # ════════════════════════════════════════════════════════════
-                # DEPLOY
-                # ════════════════════════════════════════════════════════════
-
-                # ── Write .env (decoded from base64 arg) ──────────────────
-                echo '==> Writing .env'
-                echo \"\$1\" | base64 -d > \"\$APP_DIR/.env\"
-                chmod 600 \"\$APP_DIR/.env\"
-
-                # ── Pull latest code ──────────────────────────────────────
-                echo '==> Pulling latest code'
-                git -C \"\$APP_DIR\" pull origin main
-
-                # ── PHP dependencies ──────────────────────────────────────
-                echo '==> Installing PHP dependencies'
-                composer install \
-                  --working-dir=\"\$APP_DIR/backend\" \
-                  --no-dev \
-                  --no-interaction \
-                  --optimize-autoloader
-
-                # ── Build Angular ─────────────────────────────────────────
-                echo '==> Building Angular frontend'
-                cd \"\$APP_DIR/frontend\"
-                npm ci
-                npm run build
-
-                # ── Publish frontend to nginx web root ────────────────────
-                echo '==> Publishing frontend'
-                rsync -a --delete \
-                  \"\$APP_DIR/frontend/dist/frontend/browser/\" \
-                  \"\$WEB_ROOT/\"
-
-                # ── Reload services ───────────────────────────────────────
-                echo '==> Reloading services'
-                systemctl reload php8.3-fpm
-                systemctl reload nginx
-
-                echo \"==> Deployment complete (\$(date -u))\"
-              "
+              --scripts        @/tmp/vm-deploy.sh
