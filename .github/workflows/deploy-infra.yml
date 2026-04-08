@@ -1,0 +1,72 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Deployment mode"
+        required: true
+        default: "what-if"
+        type: choice
+        options:
+          - what-if
+          - deploy
+      assignAcrPullRole:
+        description: "Create AcrPull role assignment (requires Owner/UAA permissions)"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AZURE_RESOURCE_GROUP: fedex
+
+jobs:
+  deploy-infra:
+    name: "${{ inputs.mode == 'what-if' && 'Preview infrastructure changes' || 'Deploy infrastructure' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+
+      - name: Validate ARM template
+        run: |
+          az deployment group validate \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/azuredeploy.json \
+            --parameters @infra/azuredeploy.parameters.json \
+            --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }} \
+            --output none
+          echo "Template validation passed."
+
+      - name: What-if preview
+        if: inputs.mode == 'what-if'
+        run: |
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/azuredeploy.json \
+            --parameters @infra/azuredeploy.parameters.json \
+            --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }}
+
+      - name: Deploy ARM template
+        if: inputs.mode == 'deploy'
+        run: |
+          DEPLOYMENT_NAME="fedex-infra-$(date +%Y%m%d-%H%M%S)"
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$DEPLOYMENT_NAME" \
+            --template-file infra/azuredeploy.json \
+            --parameters @infra/azuredeploy.parameters.json \
+            --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }} \
+            --output table
+
+          echo ""
+          echo "Deployment outputs:"
+          az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$DEPLOYMENT_NAME" \
+            --query "properties.outputs" \
+            --output table
