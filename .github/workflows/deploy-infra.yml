@@ -42,6 +42,48 @@ jobs:
             --output none
           echo "Template validation passed."
 
+      - name: Check which resources already exist
+        id: check_resources
+        run: |
+          # Read resource names from the parameters file
+          ACR_NAME=$(jq -r '.parameters.acrName.value' infra/azuredeploy.parameters.json)
+          AKS_NAME=$(jq -r '.parameters.aksClusterName.value' infra/azuredeploy.parameters.json)
+          COMM_NAME=$(jq -r '.parameters.communicationServiceName.value' infra/azuredeploy.parameters.json)
+          FUNC_NAME=$(jq -r '.parameters.functionAppName.value' infra/azuredeploy.parameters.json)
+          STORAGE_NAME=$(jq -r '.parameters.functionStorageAccountName.value' infra/azuredeploy.parameters.json)
+
+          MISSING=""
+
+          check_resource() {
+            local TYPE="$1" NAME="$2" LABEL="$3"
+            if az resource show --resource-group "$AZURE_RESOURCE_GROUP" \
+                 --resource-type "$TYPE" --name "$NAME" --output none 2>/dev/null; then
+              echo "  ✓ $LABEL ($NAME) exists"
+            else
+              echo "  ✗ $LABEL ($NAME) does NOT exist"
+              MISSING="${MISSING}${LABEL}, "
+            fi
+          }
+
+          echo "Checking resources in resource group '$AZURE_RESOURCE_GROUP'..."
+          check_resource "Microsoft.ContainerRegistry/registries" "$ACR_NAME" "Container Registry"
+          check_resource "Microsoft.ContainerService/managedClusters" "$AKS_NAME" "AKS Cluster"
+          check_resource "Microsoft.Communication/communicationServices" "$COMM_NAME" "Communication Services"
+          check_resource "Microsoft.Storage/storageAccounts" "$STORAGE_NAME" "Storage Account"
+          check_resource "Microsoft.Web/serverfarms" "${FUNC_NAME}-plan" "App Service Plan"
+          check_resource "Microsoft.Web/sites" "$FUNC_NAME" "Function App"
+
+          if [ -z "$MISSING" ]; then
+            echo ""
+            echo "All resources already exist. Nothing to deploy."
+            echo "needs_deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo ""
+            echo "Missing resources: ${MISSING%, }"
+            echo "Deployment required."
+            echo "needs_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: What-if preview
         if: inputs.mode == 'what-if'
         run: |
@@ -52,7 +94,7 @@ jobs:
             --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }}
 
       - name: Deploy ARM template
-        if: inputs.mode == 'deploy'
+        if: inputs.mode == 'deploy' && steps.check_resources.outputs.needs_deploy == 'true'
         run: |
           DEPLOYMENT_NAME="fedex-infra-$(date +%Y%m%d-%H%M%S)"
           az deployment group create \
@@ -70,3 +112,9 @@ jobs:
             --name "$DEPLOYMENT_NAME" \
             --query "properties.outputs" \
             --output table
+
+      - name: Skip deploy (all resources exist)
+        if: inputs.mode == 'deploy' && steps.check_resources.outputs.needs_deploy == 'false'
+        run: |
+          echo "All resources already exist — skipping deployment."
+          echo "To force a re-deploy, delete the resource first or use the Azure portal."
