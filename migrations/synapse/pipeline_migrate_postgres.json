@@ -1,0 +1,133 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "name": "CopyBusinesses",
+        "type": "Copy",
+        "dependsOn": [],
+        "typeProperties": {
+          "source": {
+            "type": "AzurePostgreSqlSource",
+            "query": "SELECT id::text, name, account_number, address, contact_email, phone, created_at AT TIME ZONE 'UTC' AS created_at FROM public.businesses"
+          },
+          "sink": {
+            "type": "SqlDWSink",
+            "allowPolyBase": false,
+            "writeBehavior": "Insert"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "PostgresSourceDataset",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "SynapseBusinesses",
+            "type": "DatasetReference"
+          }
+        ]
+      },
+      {
+        "name": "CopyOrders",
+        "type": "Copy",
+        "dependsOn": [
+          {
+            "activity": "CopyBusinesses",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "AzurePostgreSqlSource",
+            "query": "SELECT id::text, business_id::text, tracking_number, origin, destination, status::text, weight_lbs, service_type::text, estimated_delivery, actual_delivery, created_at AT TIME ZONE 'UTC' AS created_at, updated_at AT TIME ZONE 'UTC' AS updated_at FROM public.orders"
+          },
+          "sink": {
+            "type": "SqlDWSink",
+            "allowPolyBase": false,
+            "writeBehavior": "Insert"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "PostgresSourceDataset",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "SynapseOrders",
+            "type": "DatasetReference"
+          }
+        ]
+      },
+      {
+        "name": "CopyShipmentEvents",
+        "type": "Copy",
+        "dependsOn": [
+          {
+            "activity": "CopyOrders",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "AzurePostgreSqlSource",
+            "query": "SELECT id::text, order_id::text, event_type::text, location, description, occurred_at AT TIME ZONE 'UTC' AS occurred_at FROM public.shipment_events"
+          },
+          "sink": {
+            "type": "SqlDWSink",
+            "allowPolyBase": false,
+            "writeBehavior": "Insert"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "PostgresSourceDataset",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "SynapseShipmentEvents",
+            "type": "DatasetReference"
+          }
+        ]
+      },
+      {
+        "name": "CopyNotifications",
+        "type": "Copy",
+        "dependsOn": [
+          {
+            "activity": "CopyOrders",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "AzurePostgreSqlSource",
+            "query": "SELECT id::text, order_id::text, business_id::text, type::text, message, CASE WHEN is_read THEN 1 ELSE 0 END AS is_read, created_at AT TIME ZONE 'UTC' AS created_at FROM public.notifications"
+          },
+          "sink": {
+            "type": "SqlDWSink",
+            "allowPolyBase": false,
+            "writeBehavior": "Insert"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "PostgresSourceDataset",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "SynapseNotifications",
+            "type": "DatasetReference"
+          }
+        ]
+      }
+    ]
+  }
+}

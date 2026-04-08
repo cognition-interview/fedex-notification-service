@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "type": "AzureSqlDWTable",
+    "linkedServiceName": {
+      "referenceName": "fedexsynapseus-WorkspaceDefaultSqlServer",
+      "type": "LinkedServiceReference",
+      "parameters": {
+        "DBName": "fedexpool"
+      }
+    },
+    "typeProperties": {
+      "schema": "dbo",
+      "table": "shipment_events"
+    }
+  }
+}
