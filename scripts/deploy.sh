@@ -21,6 +21,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ACR_NAME="${ACR_NAME:-fedexcr}"
 TAG="${1:-$(git -C "${REPO_ROOT}" rev-parse --short HEAD)}"
 NAMESPACE="fedex"
+FUNC_APP_NAME="${FUNC_APP_NAME:-fedex-update-status}"
 
 ACR_LOGIN_SERVER=$(az acr show --name "${ACR_NAME}" --query loginServer -o tsv)
 
@@ -35,6 +36,7 @@ echo "  ACR       : ${ACR_LOGIN_SERVER}"
 echo "  Tag       : ${TAG}"
 echo "  Backend   : ${BACKEND_IMAGE}"
 echo "  Frontend  : ${FRONTEND_IMAGE}"
+echo "  Function  : ${FUNC_APP_NAME}"
 echo ""
 
 # ── 1. Log in to ACR ─────────────────────────────────────────────────────────
@@ -92,7 +94,11 @@ kubectl rollout status deployment/backend -n "${NAMESPACE}" --timeout=120s
 echo "▶ Waiting for frontend rollout..."
 kubectl rollout status deployment/frontend -n "${NAMESPACE}" --timeout=120s
 
-# ── 6. Show status ───────────────────────────────────────────────────────────
+# ── 6. Deploy Azure Function ────────────────────────────────────────────────
+echo "▶ Deploying Azure Function (update-status)..."
+(cd "${REPO_ROOT}/azure-functions" && func azure functionapp publish "${FUNC_APP_NAME}" --python)
+
+# ── 7. Show status ───────────────────────────────────────────────────────────
 INGRESS_IP=$(kubectl get ingress fedex-ingress -n "${NAMESPACE}" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "<pending>")
 

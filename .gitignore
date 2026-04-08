@@ -12,6 +12,11 @@ node_modules/
 *.swp
 *.swo
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Kubernetes secrets (never commit real values)
 k8s/secrets.yaml
 
