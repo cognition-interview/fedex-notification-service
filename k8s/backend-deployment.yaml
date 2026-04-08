@@ -7,7 +7,9 @@ metadata:
     app: backend
     app.kubernetes.io/part-of: fedex-notification-service
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: backend
