@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "fedexsynapseus-WorkspaceDefaultSqlServer",
+      "type": "LinkedServiceReference",
+      "parameters": {
+        "DBName": "fedexpool"
+      }
+    },
+    "type": "AzureSqlDWTable",
+    "typeProperties": {
+      "schema": "dbo",
+      "table": "businesses"
+    }
+  }
+}
