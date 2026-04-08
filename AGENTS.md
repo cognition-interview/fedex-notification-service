@@ -584,25 +584,51 @@ All services use in-memory caching via `Map` + `shareReplay(1)` for GET requests
 >
 > Do **not** use imperative `az` CLI commands (e.g., `az resource create`, `az aks create`) to provision or modify Azure infrastructure. Instead:
 >
-> 1. Add the new resource definition to `infra/azuredeploy.json`
-> 2. Add any new parameters to both `infra/azuredeploy.json` and `infra/azuredeploy.parameters.json`
-> 3. Validate locally with `./scripts/deploy-infra.sh --what-if`
-> 4. Deploy via the **Deploy Infrastructure** GitHub Actions workflow (`workflow_dispatch`) or locally with `./scripts/deploy-infra.sh`
+> 1. Create a new split template file in `infra/` (e.g., `infra/my-resource.json`)
+> 2. Also add the resource to the reference template `infra/azuredeploy.json` and update `infra/azuredeploy.parameters.json`
+> 3. Add an existence check + deploy step for the resource in both `.github/workflows/deploy-infra.yml` and `scripts/deploy-infra.sh`
+> 4. Validate locally with `./scripts/deploy-infra.sh --what-if`
+> 5. Deploy via the **Deploy Infrastructure** GitHub Actions workflow (`workflow_dispatch`) or locally with `./scripts/deploy-infra.sh`
 >
 > This ensures all infrastructure is version-controlled, reproducible, and reviewable through pull requests. The only exception is Kubernetes-level resources (namespaces, secrets, deployments, services, ingress) which are managed via `kubectl` and the manifests in `k8s/`.
 
-Azure infrastructure is managed declaratively via ARM templates in the `infra/` directory.
+### Split Template Architecture
 
-**Files:**
+Infrastructure is managed using **split ARM templates** — each resource (or tightly coupled group of resources) has its own template file. Before deploying, the workflow and script check whether each resource already exists via `az resource show`. Only templates for **missing** resources are deployed. This avoids expensive no-op reconciliation (e.g., AKS takes 10-15 minutes even when nothing changed).
 
-| File | Purpose |
-|------|---------|
-| `infra/azuredeploy.json` | Main ARM template defining all Azure resources |
-| `infra/azuredeploy.parameters.json` | Production parameter values |
-| `scripts/deploy-infra.sh` | Wrapper script with validation and what-if support |
-| `scripts/provision-aks.sh` | **DEPRECATED** — legacy imperative CLI script (kept for reference) |
+```
+infra/
+├── azuredeploy.json              # Reference template (all resources — used for greenfield)
+├── azuredeploy.parameters.json   # Production parameter values for all resources
+├── acr.json                      # Container Registry only
+├── aks.json                      # AKS cluster + user node pool + AcrPull role assignment
+├── communication.json            # Azure Communication Services only
+└── function-app.json             # Storage Account + Consumption Plan + Function App
+```
 
-**Resources defined in the template:**
+**How selective deployment works:**
+
+```
+1. Validate all templates (az deployment group validate)
+2. For each resource, check existence:
+     az resource show --resource-group fedex --resource-type TYPE --name NAME
+3. If resource exists → skip
+   If resource missing → deploy its template (az deployment group create)
+4. Summary: report what was deployed vs skipped
+```
+
+When all resources exist, deployment takes ~10 seconds (just existence checks). When a new resource needs provisioning, only that template is deployed.
+
+### Split Template Files
+
+| File | Resources | Key Parameters |
+|------|-----------|---------------|
+| `infra/acr.json` | Container Registry | `acrName`, `acrSku` |
+| `infra/aks.json` | AKS cluster, system node pool, user node pool, AcrPull role assignment | `aksClusterName`, `aksDnsPrefix`, `kubernetesVersion`, node pool sizes, `assignAcrPullRole` |
+| `infra/communication.json` | Communication Services | `communicationServiceName`, `communicationServiceDataLocation` |
+| `infra/function-app.json` | Storage Account, App Service Plan (Consumption), Function App | `functionAppName`, `functionStorageAccountName` |
+
+### Current Resources
 
 | Resource | Type | Default Name | Notes |
 |----------|------|-------------|-------|
@@ -612,8 +638,11 @@ Azure infrastructure is managed declaratively via ARM templates in the `infra/` 
 | AKS User Node Pool | `Microsoft.ContainerService/managedClusters/agentPools` | `userpool` | User mode, Standard_A2_v2, autoscaling 1–1 |
 | Communication Services | `Microsoft.Communication/communicationServices` | `fedex-communication` | Global location, US data residency |
 | AcrPull Role Assignment | `Microsoft.Authorization/roleAssignments` | — | Conditional; grants AKS identity pull access to ACR |
+| Storage Account | `Microsoft.Storage/storageAccounts` | `fedexfuncsa` | Standard_LRS, TLS 1.2, used by Function App |
+| App Service Plan | `Microsoft.Web/serverfarms` | `fedex-update-status-plan` | Consumption (Y1/Dynamic), Linux |
+| Function App | `Microsoft.Web/sites` | `fedex-update-status` | Python 3.12, order status update function |
 
-**Key parameters:**
+### Key Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -630,49 +659,88 @@ Azure infrastructure is managed declaratively via ARM templates in the `infra/` 
 | `communicationServiceName` | `fedex-communication` | Communication Services resource name |
 | `communicationServiceDataLocation` | `unitedstates` | Data residency region |
 | `assignAcrPullRole` | `true` | Set to `false` if the deploying SP lacks `roleAssignments/write` |
+| `functionAppName` | `fedex-update-status` | Function App name |
+| `functionStorageAccountName` | `fedexfuncsa` | Storage Account for Function App |
 
-**Template outputs:** `acrLoginServer`, `aksClusterName`, `aksFqdn`, `communicationServiceName`, `communicationServiceHostname`
-
-**Usage:**
+### Usage
 
 ```bash
-# Preview changes (dry run)
+# Preview changes for all templates (dry run)
 ./scripts/deploy-infra.sh --what-if
 
-# Deploy infrastructure
+# Deploy only missing resources
 ./scripts/deploy-infra.sh
 
-# Deploy without role assignment (Contributor-only SP)
-# Edit azuredeploy.parameters.json to set assignAcrPullRole = false, then:
-./scripts/deploy-infra.sh
+# Force re-deploy all resources (even if they exist)
+./scripts/deploy-infra.sh --force
 ```
 
-**Design notes:**
+### Adding a New Azure Resource
+
+When you need to provision a new Azure resource, follow this checklist:
+
+**1. Create a split template** — `infra/<resource-name>.json`
+
+Each split template is a standalone ARM template with its own `parameters`, `resources`, and `outputs` sections. Only include the parameters needed by that specific resource. Example structure:
+
+```json
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": { "description": "..." },
+  "parameters": {
+    "location": { "type": "string", "defaultValue": "[resourceGroup().location]" },
+    "myResourceName": { "type": "string", "defaultValue": "fedex-my-resource" }
+  },
+  "resources": [ /* resource definitions */ ],
+  "outputs": { /* any outputs needed downstream */ }
+}
+```
+
+**2. Update the reference template** — Add the same resource(s) to `infra/azuredeploy.json` so it remains a complete picture of all infrastructure. Add any new parameters to both `azuredeploy.json` and `azuredeploy.parameters.json`.
+
+**3. Add existence check + deploy step to the workflow** (`.github/workflows/deploy-infra.yml`):
+
+In the "Check which resources already exist" step, add:
+```yaml
+if check "Microsoft.ResourceType/resourceKind" "$RESOURCE_NAME"; then
+  echo "  ✓ Resource ($RESOURCE_NAME) exists"
+  echo "myresource=exists" >> "$GITHUB_OUTPUT"
+else
+  echo "  ✗ Resource ($RESOURCE_NAME) missing"
+  echo "myresource=missing" >> "$GITHUB_OUTPUT"
+fi
+```
+
+Add a validation step, a what-if step, a conditional deploy step, and update the summary step.
+
+**4. Add existence check + deploy to the script** (`scripts/deploy-infra.sh`):
+
+Follow the same pattern — read name from parameters, check existence with `resource_exists`, conditionally deploy.
+
+**5. Validate** — Run `./scripts/deploy-infra.sh --what-if` to preview the changes.
+
+**6. Open a PR** — Include the new split template, updated reference template, updated workflow, and updated script.
+
+**7. Deploy** — After merge, trigger the workflow with `mode: deploy`. It will detect the new resource as missing and deploy only that template.
+
+### Design Notes
+
 - The user node pool is defined as a separate child resource (`managedClusters/agentPools`) rather than inline in `agentPoolProfiles`. This is required for idempotent ARM deployments against an existing AKS cluster — Azure rejects inline additions of agent pools on update.
 - The AcrPull role assignment is conditional (`assignAcrPullRole` parameter) because it requires `Microsoft.Authorization/roleAssignments/write` permission (User Access Administrator or Owner role). If the deploying service principal only has Contributor, set this to `false` and use `az aks update --attach-acr` instead.
 - All resources are deployed to the `fedex` resource group in `centralus`.
-- The template uses incremental deployment mode — existing resources not in the template are left untouched.
+- Each split template uses incremental deployment mode — existing resources not in that template are left untouched.
+- The reference template (`azuredeploy.json`) is kept in sync with all split templates. It can be used for greenfield deployments where everything needs to be created at once, but day-to-day deployments should use the split templates via the workflow/script.
+- If a canceled workflow run leaves an in-progress AKS operation, subsequent deployments will fail validation. Abort the stuck operation with `az aks operation-abort --resource-group fedex --name fedex-k8-cluster` and retry.
 
-**Adding a new Azure resource:**
-
-When you need to provision a new Azure resource (e.g., a Storage Account, App Service, Function App, Key Vault):
-
-1. **Define the resource** in `infra/azuredeploy.json` under the `resources` array. Use the appropriate ARM resource type and API version (refer to [Azure ARM template reference](https://learn.microsoft.com/en-us/azure/templates/)).
-2. **Parameterize** any values that may vary across environments (names, SKUs, sizes). Add parameters with sensible defaults.
-3. **Add outputs** if downstream steps need values from the new resource (e.g., connection strings, hostnames).
-4. **Update `infra/azuredeploy.parameters.json`** with production values for any new parameters.
-5. **Validate** by running `./scripts/deploy-infra.sh --what-if` to preview the changes.
-6. **Open a PR** with the template changes for review before deploying.
-7. **Deploy** via the GitHub Actions workflow (**Actions → Deploy Infrastructure → Run workflow**) or locally with `./scripts/deploy-infra.sh`.
-
-**GitHub Actions workflow:**
+### GitHub Actions Workflow
 
 The `Deploy Infrastructure` workflow (`.github/workflows/deploy-infra.yml`) provides a manual trigger to deploy ARM templates:
 - **Trigger:** `workflow_dispatch` (manual only — **Actions → Deploy Infrastructure → Run workflow**)
 - **Inputs:**
   - `mode`: `what-if` (preview, default) or `deploy` (apply changes)
   - `assignAcrPullRole`: toggle for the AcrPull role assignment (default: `false`)
-- **Steps:** Azure login → validate template → what-if or deploy → show outputs
+- **Steps:** Azure login → validate all templates → check resource existence → what-if or selective deploy → summary
 
 ### Docker
 
