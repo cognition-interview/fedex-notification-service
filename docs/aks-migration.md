@@ -215,6 +215,9 @@ All configuration is hardcoded in the workflow (`ACR_NAME: fedexcr`, `AKS_CLUSTE
 | Secret | `AZURE_APP_ID` | Service principal app ID |
 | Secret | `AZURE_PASSWORD` | Service principal password |
 | Secret | `AZURE_TENANT_ID` | Azure AD tenant ID |
+| Secret | `POSTGRES_CONNECTION_STRING` | PostgreSQL connection URL |
+| Secret | `AZURE_EMAIL_CONNECTION_STRING` | Azure Communication Services connection string |
+| Secret | `AZURE_EMAIL_FROM_ADDRESS` | Sender email address for notifications |
 | Variable | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
 ---
