@@ -50,6 +50,8 @@ jobs:
           PG_CS:      ${{ secrets.POSTGRES_CONNECTION_STRING }}
 
       # ── 2. Login to Azure ────────────────────────────────────────────────
+      #       After this step the runner's az CLI is authenticated —
+      #       no need for the azure/CLI@v2 Docker wrapper below.
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -58,40 +60,26 @@ jobs:
 
       # ── 3. Create VM if it doesn't exist ────────────────────────────────
       - name: Ensure VM exists
-        uses: azure/CLI@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            EXISTS=$(az vm show \
-              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --name           "${{ vars.AZURE_VM_NAME }}" \
-              --query          "name" -o tsv 2>/dev/null || echo "")
+        run: |
+          EXISTS=$(az vm show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name           "${{ vars.AZURE_VM_NAME }}" \
+            --query          "name" -o tsv 2>/dev/null || echo "")
 
-            if [ -z "$EXISTS" ]; then
-              echo "==> VM not found, creating..."
+          if [ -z "$EXISTS" ]; then
+            echo "==> VM not found, creating..."
 
-              # Generate a random password — SSH is never used, only az run-command
-              VM_PASSWORD=$(openssl rand -base64 32)
+            # Random password — SSH is never used, only az run-command
+            VM_PASSWORD="Deploy$(openssl rand -hex 12)Az1!"
 
-              az vm create \
-                --resource-group      "${{ vars.AZURE_RESOURCE_GROUP }}" \
-                --name                "${{ vars.AZURE_VM_NAME }}" \
-                --image               Ubuntu2404 \
-                --size                Standard_B2s \
-                --admin-username      azureuser \
-                --admin-password      "$VM_PASSWORD" \
-                --authentication-type password \
-                --public-ip-sku       Standard
+            az vm create --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}" --image Ubuntu2204 --size Standard_B2s --admin-username azureuser --admin-password "$VM_PASSWORD" --authentication-type password --public-ip-sku Standard
 
-              az vm open-port \
-                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-                --name           "${{ vars.AZURE_VM_NAME }}" \
-                --port           80
+            az vm open-port --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}" --port 80
 
-              echo "==> VM created."
-            else
-              echo "==> VM already exists, skipping creation."
-            fi
+            echo "==> VM created."
+          else
+            echo "==> VM already exists, skipping creation."
+          fi
 
       # ── 4. Base64-encode the .env so special characters survive transfer ─
       #       (Azure connection strings commonly contain = ; @ : which would
@@ -111,135 +99,132 @@ jobs:
       #       issues and keeps the script readable without escaping.
       #       run-command executes as root on the VM; no SSH key needed.
       - name: Provision & deploy on VM
-        uses: azure/CLI@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            cat > /tmp/vm-deploy.sh << 'VMSCRIPT'
-            #!/bin/bash
-            set -euo pipefail
+        run: |
+          cat > /tmp/vm-deploy.sh << 'VMSCRIPT'
+          #!/bin/bash
+          set -euo pipefail
 
-            APP_DIR=/var/www/app
-            WEB_ROOT=/var/www/html
-            REPO_URL='${{ vars.APP_REPO_URL }}'
+          APP_DIR=/var/www/app
+          WEB_ROOT=/var/www/html
+          REPO_URL='${{ vars.APP_REPO_URL }}'
 
-            # ════════════════════════════════════════════════════════════════
-            # PROVISION (idempotent — skipped on subsequent runs)
-            # ════════════════════════════════════════════════════════════════
+          # ════════════════════════════════════════════════════════════════
+          # PROVISION (idempotent — skipped on subsequent runs)
+          # ════════════════════════════════════════════════════════════════
 
-            # ── System packages ──────────────────────────────────────────
-            if ! command -v nginx &>/dev/null; then
-              echo '==> Installing nginx'
-              apt-get update -q
-              apt-get install -y -q nginx rsync git
-            fi
+          # ── System packages ──────────────────────────────────────────
+          if ! command -v nginx &>/dev/null; then
+            echo '==> Installing nginx'
+            apt-get update -q
+            apt-get install -y -q nginx rsync git
+          fi
 
-            if ! systemctl is-active --quiet php8.3-fpm; then
-              echo '==> Installing PHP 8.3'
-              apt-get update -q
-              apt-get install -y -q software-properties-common
-              add-apt-repository -y ppa:ondrej/php
-              apt-get update -q
-              apt-get install -y -q \
-                php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
-            fi
+          if ! systemctl is-active --quiet php8.3-fpm; then
+            echo '==> Installing PHP 8.3'
+            apt-get update -q
+            apt-get install -y -q software-properties-common
+            add-apt-repository -y ppa:ondrej/php
+            apt-get update -q
+            apt-get install -y -q \
+              php8.3-fpm php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
+          fi
 
-            if ! command -v composer &>/dev/null; then
-              echo '==> Installing Composer'
-              curl -fsSL https://getcomposer.org/installer \
-                | php -- --install-dir=/usr/local/bin --filename=composer
-            fi
+          if ! command -v composer &>/dev/null; then
+            echo '==> Installing Composer'
+            curl -fsSL https://getcomposer.org/installer \
+              | php -- --install-dir=/usr/local/bin --filename=composer
+          fi
 
-            if ! command -v node &>/dev/null; then
-              echo '==> Installing Node 22'
-              curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-              apt-get install -y -q nodejs
-            fi
+          if ! command -v node &>/dev/null; then
+            echo '==> Installing Node 22'
+            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+            apt-get install -y -q nodejs
+          fi
 
-            # ── Clone repo (first run only) ──────────────────────────────
-            if [ ! -d "$APP_DIR/.git" ]; then
-              echo '==> Cloning repository'
-              mkdir -p "$APP_DIR" "$WEB_ROOT"
-              git clone "$REPO_URL" "$APP_DIR"
-            fi
+          # ── Clone repo (first run only) ──────────────────────────────
+          if [ ! -d "$APP_DIR/.git" ]; then
+            echo '==> Cloning repository'
+            mkdir -p "$APP_DIR" "$WEB_ROOT"
+            git clone "$REPO_URL" "$APP_DIR"
+          fi
 
-            # ── nginx site config (first run only) ──────────────────────
-            if [ ! -f /etc/nginx/sites-available/app ]; then
-              echo '==> Configuring nginx'
-              cat > /etc/nginx/sites-available/app << 'NGINX'
-            server {
-                listen 80;
-                server_name _;
+          # ── nginx site config (first run only) ──────────────────────
+          if [ ! -f /etc/nginx/sites-available/app ]; then
+            echo '==> Configuring nginx'
+            cat > /etc/nginx/sites-available/app << 'NGINX'
+          server {
+              listen 80;
+              server_name _;
 
-                root /var/www/html;
-                index index.html;
+              root /var/www/html;
+              index index.html;
 
-                location / {
-                    try_files $uri $uri/ /index.html;
-                }
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
 
-                location /api {
-                    root /var/www/app/backend/public;
-                    fastcgi_pass unix:/run/php/php8.3-fpm.sock;
-                    fastcgi_index index.php;
-                    fastcgi_param SCRIPT_FILENAME /var/www/app/backend/public/index.php;
-                    include fastcgi_params;
-                }
-            }
-            NGINX
-              ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app
-              rm -f /etc/nginx/sites-enabled/default
-              nginx -t
-            fi
+              location /api {
+                  root /var/www/app/backend/public;
+                  fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+                  fastcgi_index index.php;
+                  fastcgi_param SCRIPT_FILENAME /var/www/app/backend/public/index.php;
+                  include fastcgi_params;
+              }
+          }
+          NGINX
+            ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
+          fi
 
-            # ── Enable services (first run only) ────────────────────────
-            systemctl enable --now php8.3-fpm
-            systemctl enable --now nginx
+          # ── Enable services (first run only) ────────────────────────
+          systemctl enable --now php8.3-fpm
+          systemctl enable --now nginx
 
-            # ════════════════════════════════════════════════════════════════
-            # DEPLOY
-            # ════════════════════════════════════════════════════════════════
+          # ════════════════════════════════════════════════════════════════
+          # DEPLOY
+          # ════════════════════════════════════════════════════════════════
 
-            # ── Write .env (decoded from base64 arg) ────────────────────
-            echo '==> Writing .env'
-            echo "$1" | base64 -d > "$APP_DIR/.env"
-            chmod 600 "$APP_DIR/.env"
+          # ── Write .env (decoded from base64 arg) ────────────────────
+          echo '==> Writing .env'
+          echo "$1" | base64 -d > "$APP_DIR/.env"
+          chmod 600 "$APP_DIR/.env"
 
-            # ── Pull latest code ─────────────────────────────────────────
-            echo '==> Pulling latest code'
-            git -C "$APP_DIR" pull origin main
+          # ── Pull latest code ─────────────────────────────────────────
+          echo '==> Pulling latest code'
+          git -C "$APP_DIR" pull origin main
 
-            # ── PHP dependencies ─────────────────────────────────────────
-            echo '==> Installing PHP dependencies'
-            composer install \
-              --working-dir="$APP_DIR/backend" \
-              --no-dev \
-              --no-interaction \
-              --optimize-autoloader
+          # ── PHP dependencies ─────────────────────────────────────────
+          echo '==> Installing PHP dependencies'
+          composer install \
+            --working-dir="$APP_DIR/backend" \
+            --no-dev \
+            --no-interaction \
+            --optimize-autoloader
 
-            # ── Build Angular ────────────────────────────────────────────
-            echo '==> Building Angular frontend'
-            cd "$APP_DIR/frontend"
-            npm ci
-            npm run build
+          # ── Build Angular ────────────────────────────────────────────
+          echo '==> Building Angular frontend'
+          cd "$APP_DIR/frontend"
+          npm ci
+          npm run build
 
-            # ── Publish frontend to nginx web root ───────────────────────
-            echo '==> Publishing frontend'
-            rsync -a --delete \
-              "$APP_DIR/frontend/dist/frontend/browser/" \
-              "$WEB_ROOT/"
+          # ── Publish frontend to nginx web root ───────────────────────
+          echo '==> Publishing frontend'
+          rsync -a --delete \
+            "$APP_DIR/frontend/dist/frontend/browser/" \
+            "$WEB_ROOT/"
 
-            # ── Reload services ──────────────────────────────────────────
-            echo '==> Reloading services'
-            systemctl reload php8.3-fpm
-            systemctl reload nginx
+          # ── Reload services ──────────────────────────────────────────
+          echo '==> Reloading services'
+          systemctl reload php8.3-fpm
+          systemctl reload nginx
 
-            echo "==> Deployment complete ($(date -u))"
-            VMSCRIPT
+          echo "==> Deployment complete ($(date -u))"
+          VMSCRIPT
 
-            az vm run-command invoke \
-              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --name           "${{ vars.AZURE_VM_NAME }}" \
-              --command-id     RunShellScript \
-              --parameters     "${{ steps.env_payload.outputs.value }}" \
-              --scripts        @/tmp/vm-deploy.sh
+          az vm run-command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name           "${{ vars.AZURE_VM_NAME }}" \
+            --command-id     RunShellScript \
+            --parameters     "${{ steps.env_payload.outputs.value }}" \
+            --scripts        @/tmp/vm-deploy.sh
