@@ -185,3 +185,13 @@ jobs:
           echo ""
           echo "── Ingress ──"
           kubectl get ingress -n "$NAMESPACE"
+          echo ""
+          echo "── Public Endpoint ──"
+          EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$EXTERNAL_IP" ]; then
+            echo "App URL:      http://${EXTERNAL_IP}"
+            echo "API endpoint: http://${EXTERNAL_IP}/api/businesses?limit=1"
+          else
+            echo "⚠ Ingress controller external IP not yet assigned. Run:"
+            echo "  kubectl get svc -n ingress-nginx ingress-nginx-controller"
+          fi
