@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "centralus"
+    },
+    "acrName": {
+      "value": "fedexcr"
+    },
+    "acrSku": {
+      "value": "Standard"
+    },
+    "aksClusterName": {
+      "value": "fedex-k8-cluster"
+    },
+    "aksDnsPrefix": {
+      "value": "fedex-k8-cluster-dns"
+    },
+    "kubernetesVersion": {
+      "value": "1.33"
+    },
+    "systemNodePoolVmSize": {
+      "value": "Standard_A2_v2"
+    },
+    "systemNodePoolMinCount": {
+      "value": 1
+    },
+    "systemNodePoolMaxCount": {
+      "value": 1
+    },
+    "userNodePoolVmSize": {
+      "value": "Standard_A2_v2"
+    },
+    "userNodePoolMinCount": {
+      "value": 1
+    },
+    "userNodePoolMaxCount": {
+      "value": 1
+    },
+    "communicationServiceName": {
+      "value": "fedex-communication"
+    },
+    "communicationServiceDataLocation": {
+      "value": "unitedstates"
+    }
+  }
+}

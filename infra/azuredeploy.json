@@ -1,0 +1,257 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "ARM template for provisioning FedEx Notification Service infrastructure: Azure Container Registry, Azure Kubernetes Service, and Azure Communication Services."
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "defaultValue": "fedexcr",
+      "metadata": {
+        "description": "Name of the Azure Container Registry."
+      },
+      "minLength": 5,
+      "maxLength": 50
+    },
+    "acrSku": {
+      "type": "string",
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "SKU tier for the Azure Container Registry."
+      }
+    },
+    "aksClusterName": {
+      "type": "string",
+      "defaultValue": "fedex-k8-cluster",
+      "metadata": {
+        "description": "Name of the AKS cluster."
+      }
+    },
+    "aksDnsPrefix": {
+      "type": "string",
+      "defaultValue": "fedex-k8-cluster-dns",
+      "metadata": {
+        "description": "DNS prefix for the AKS cluster. Immutable after creation."
+      }
+    },
+    "kubernetesVersion": {
+      "type": "string",
+      "defaultValue": "1.33",
+      "metadata": {
+        "description": "Kubernetes version for the AKS cluster."
+      }
+    },
+    "systemNodePoolVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_A2_v2",
+      "metadata": {
+        "description": "VM size for the system node pool."
+      }
+    },
+    "systemNodePoolMinCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Minimum node count for the system node pool autoscaler."
+      }
+    },
+    "systemNodePoolMaxCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Maximum node count for the system node pool autoscaler."
+      }
+    },
+    "userNodePoolVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_A2_v2",
+      "metadata": {
+        "description": "VM size for the user node pool."
+      }
+    },
+    "userNodePoolMinCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Minimum node count for the user node pool autoscaler."
+      }
+    },
+    "userNodePoolMaxCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Maximum node count for the user node pool autoscaler."
+      }
+    },
+    "communicationServiceName": {
+      "type": "string",
+      "defaultValue": "fedex-communication",
+      "metadata": {
+        "description": "Name of the Azure Communication Services resource."
+      }
+    },
+    "communicationServiceDataLocation": {
+      "type": "string",
+      "defaultValue": "unitedstates",
+      "allowedValues": [
+        "unitedstates",
+        "europe",
+        "uk",
+        "australia",
+        "japan",
+        "france",
+        "germany",
+        "brazil",
+        "korea",
+        "canada"
+      ],
+      "metadata": {
+        "description": "Data residency location for Azure Communication Services."
+      }
+    },
+    "assignAcrPullRole": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Whether to create the AcrPull role assignment for the AKS managed identity. Requires User Access Administrator or Owner permissions on the resource group. Set to false if the deploying principal lacks Microsoft.Authorization/roleAssignments/write."
+      }
+    }
+  },
+  "variables": {
+    "acrPullRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('acrName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('acrSku')]"
+      },
+      "properties": {
+        "adminUserEnabled": false
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2024-01-01",
+      "name": "[parameters('aksClusterName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "kubernetesVersion": "[parameters('kubernetesVersion')]",
+        "dnsPrefix": "[parameters('aksDnsPrefix')]",
+        "networkProfile": {
+          "networkPlugin": "azure",
+          "networkDataplane": "cilium",
+          "networkPluginMode": "overlay"
+        },
+        "agentPoolProfiles": [
+          {
+            "name": "agentpool",
+            "mode": "System",
+            "vmSize": "[parameters('systemNodePoolVmSize')]",
+            "enableAutoScaling": true,
+            "minCount": "[parameters('systemNodePoolMinCount')]",
+            "maxCount": "[parameters('systemNodePoolMaxCount')]",
+            "osType": "Linux",
+            "osSKU": "AzureLinux",
+            "type": "VirtualMachineScaleSets"
+          }
+        ]
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.ContainerService/managedClusters/agentPools",
+      "apiVersion": "2024-01-01",
+      "name": "[concat(parameters('aksClusterName'), '/userpool')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerService/managedClusters', parameters('aksClusterName'))]"
+      ],
+      "properties": {
+        "mode": "User",
+        "vmSize": "[parameters('userNodePoolVmSize')]",
+        "enableAutoScaling": true,
+        "minCount": "[parameters('userNodePoolMinCount')]",
+        "maxCount": "[parameters('userNodePoolMaxCount')]",
+        "osType": "Linux",
+        "osSKU": "AzureLinux",
+        "type": "VirtualMachineScaleSets"
+      }
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "condition": "[parameters('assignAcrPullRole')]",
+      "name": "[concat(parameters('acrName'), '/Microsoft.Authorization/', guid(resourceId('Microsoft.ContainerService/managedClusters', parameters('aksClusterName')), variables('acrPullRoleDefinitionId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+        "[resourceId('Microsoft.ContainerService/managedClusters', parameters('aksClusterName'))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('acrPullRoleDefinitionId')]",
+        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('aksClusterName')), '2024-01-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Communication/communicationServices",
+      "apiVersion": "2023-04-01",
+      "name": "[parameters('communicationServiceName')]",
+      "location": "global",
+      "properties": {
+        "dataLocation": "[parameters('communicationServiceDataLocation')]"
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    }
+  ],
+  "outputs": {
+    "acrLoginServer": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))).loginServer]"
+    },
+    "aksClusterName": {
+      "type": "string",
+      "value": "[parameters('aksClusterName')]"
+    },
+    "aksFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('aksClusterName'))).fqdn]"
+    },
+    "communicationServiceName": {
+      "type": "string",
+      "value": "[parameters('communicationServiceName')]"
+    },
+    "communicationServiceHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))).hostName]"
+    }
+  }
+}

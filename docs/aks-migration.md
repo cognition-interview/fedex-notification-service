@@ -63,6 +63,9 @@
 ## Directory Structure
 
 ```
+├── infra/
+│   ├── azuredeploy.json              # ARM template — ACR, AKS, Communication Services
+│   └── azuredeploy.parameters.json   # Parameter values for production
 ├── docker/
 │   ├── backend/
 │   │   ├── Dockerfile          # PHP-FPM + Nginx (multi-stage)
@@ -81,7 +84,8 @@
 │   ├── ingress.yaml            # NGINX Ingress routing rules
 │   └── secrets.yaml.example    # Template for Kubernetes secrets
 ├── scripts/
-│   ├── provision-aks.sh        # One-time AKS + ACR + Ingress setup
+│   ├── deploy-infra.sh         # Deploy ARM template to Azure
+│   ├── provision-aks.sh        # DEPRECATED — use deploy-infra.sh
 │   └── deploy.sh               # Build, push, deploy images
 └── .github/workflows/
     └── deploy-aks.yml          # CI/CD: test → build → deploy
@@ -111,12 +115,25 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 ### 2. Provision Infrastructure (One-Time)
 
-The ACR (`fedexcr`) and AKS cluster (`fedex-k8-cluster`) are already provisioned in the `fedex` resource group in `centralus`. If you need to re-provision:
+The ACR (`fedexcr`) and AKS cluster (`fedex-k8-cluster`) are already provisioned in the `fedex` resource group in `centralus`. If you need to re-provision, use the ARM template:
 
 ```bash
-chmod +x scripts/provision-aks.sh
-./scripts/provision-aks.sh
+# Preview what will be created/changed (dry run)
+./scripts/deploy-infra.sh --what-if
+
+# Deploy infrastructure (ACR, AKS, Communication Services, role assignments)
+./scripts/deploy-infra.sh
 ```
+
+The ARM template (`infra/azuredeploy.json`) declaratively provisions:
+- **Azure Container Registry** — container image storage
+- **Azure Kubernetes Service** — cluster with system + user node pools
+- **Azure Communication Services** — email notifications
+- **AcrPull role assignment** — allows AKS to pull images from ACR
+
+To customize resource parameters, edit `infra/azuredeploy.parameters.json`.
+
+> **Legacy script:** `scripts/provision-aks.sh` is deprecated but kept for reference. It uses imperative Azure CLI commands instead of ARM templates.
 
 ### 3. Create Kubernetes Secrets
 

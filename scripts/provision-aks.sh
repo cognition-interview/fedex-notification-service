@@ -2,16 +2,36 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # provision-aks.sh — One-time setup for AKS + ACR + NGINX Ingress Controller
 #
-# Prerequisites:
-#   - Azure CLI installed and logged in (az login)
-#   - kubectl installed
-#   - Helm 3 installed
+# DEPRECATED: This script uses imperative Azure CLI commands to provision
+# infrastructure. Use the ARM template instead:
 #
-# Usage:
-#   export AZURE_SUBSCRIPTION_ID="your-sub-id"   # optional if already set
-#   ./scripts/provision-aks.sh
+#   ./scripts/deploy-infra.sh            # deploy infrastructure
+#   ./scripts/deploy-infra.sh --what-if  # preview changes (dry run)
+#
+# The ARM template (infra/azuredeploy.json) is the preferred way to manage
+# Azure resources. It provisions ACR, AKS, Communication Services, and the
+# AcrPull role assignment declaratively.
+#
+# This script is kept for reference only.
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
+
+echo "════════════════════════════════════════════════════════════════════"
+echo "  WARNING: This script is deprecated."
+echo ""
+echo "  Use ARM templates instead:"
+echo "    ./scripts/deploy-infra.sh            # deploy infrastructure"
+echo "    ./scripts/deploy-infra.sh --what-if  # preview changes"
+echo ""
+echo "  See: infra/azuredeploy.json"
+echo "       infra/azuredeploy.parameters.json"
+echo "════════════════════════════════════════════════════════════════════"
+echo ""
+read -rp "Continue with legacy provisioning anyway? [y/N] " answer
+if [[ "${answer}" != "y" && "${answer}" != "Y" ]]; then
+  echo "Aborted. Use ./scripts/deploy-infra.sh instead."
+  exit 0
+fi
 
 # ── Configuration (override with env vars) ────────────────────────────────────
 RESOURCE_GROUP="fedex"
@@ -23,7 +43,7 @@ NODE_VM_SIZE="${AKS_NODE_VM_SIZE:-Standard_A2_v2}"
 K8S_VERSION="${AKS_K8S_VERSION:-1.33}"
 
 echo "═══════════════════════════════════════════════════════════════════"
-echo "  FedEx Notification Service — AKS Provisioning"
+echo "  FedEx Notification Service — AKS Provisioning (legacy)"
 echo "═══════════════════════════════════════════════════════════════════"
 echo ""
 echo "  Resource Group : ${RESOURCE_GROUP}"
