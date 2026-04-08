@@ -2,14 +2,11 @@
 # Serves the Slim Framework PHP API behind Nginx on port 80.
 # Env vars (POSTGRES_CONNECTION_STRING, AZURE_EMAIL_CONNECTION_STRING, etc.)
 # are written to /var/www/.env at container startup so phpdotenv can load them.
+#
+# Dependencies (vendor/) must be pre-installed before building this image.
+# The CI workflow runs `composer install` before `docker build` to avoid
+# network timeouts inside the Docker build.
 
-FROM composer:2 AS deps
-WORKDIR /app
-COPY backend/composer*.json ./
-RUN composer install --no-dev --no-interaction --optimize-autoloader
-COPY backend/ ./
-
-# ── Runtime ───────────────────────────────────────────────────────────────────
 FROM php:8.3-fpm-alpine
 
 RUN apk add --no-cache \
@@ -19,7 +16,8 @@ RUN apk add --no-cache \
     && docker-php-ext-install pdo pdo_pgsql \
     && rm -rf /var/cache/apk/*
 
-COPY --from=deps /app /var/www/backend
+# Copy backend with pre-installed vendor/
+COPY backend/ /var/www/backend/
 
 COPY docker/backend/nginx.conf   /etc/nginx/http.d/default.conf
 COPY docker/backend/supervisord.conf /etc/supervisord.conf
