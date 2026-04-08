@@ -87,7 +87,7 @@ jobs:
 
           APP_DIR=/var/www/app
           WEB_ROOT=/var/www/html
-          REPO_URL='${{ vars.APP_REPO_URL }}'
+          REPO_URL='https://github.com/${{ github.repository }}.git'
 
           # ════════════════════════════════════════════════════════════════
           # PROVISION (idempotent — skipped on subsequent runs)
