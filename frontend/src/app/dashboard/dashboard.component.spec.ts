@@ -1,6 +1,7 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { DashboardComponent } from './dashboard.component';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
@@ -8,8 +9,8 @@ import { BusinessService } from '../services/business.service';
 describe('DashboardComponent', () => {
   let fixture: ComponentFixture<DashboardComponent>;
   let component: DashboardComponent;
-  let mockOrderService: jasmine.SpyObj<OrderService>;
-  let mockBusinessService: jasmine.SpyObj<BusinessService>;
+  let mockOrderService: { getOrders: ReturnType<typeof vi.fn>; getOrderStats: ReturnType<typeof vi.fn> };
+  let mockBusinessService: { getSelectedBusinessId: ReturnType<typeof vi.fn> };
 
   const mockStats = {
     total: 20, in_transit: 5, delivered: 10,
@@ -34,12 +35,17 @@ describe('DashboardComponent', () => {
   ];
 
   beforeEach(async () => {
-    mockOrderService = jasmine.createSpyObj('OrderService', ['getOrders', 'getOrderStats']);
-    mockBusinessService = jasmine.createSpyObj('BusinessService', ['getSelectedBusinessId']);
+    mockOrderService = {
+      getOrders: vi.fn(),
+      getOrderStats: vi.fn(),
+    };
+    mockBusinessService = {
+      getSelectedBusinessId: vi.fn(),
+    };
 
-    mockBusinessService.getSelectedBusinessId.and.returnValue(of(''));
-    mockOrderService.getOrderStats.and.returnValue(of(mockStats));
-    mockOrderService.getOrders.and.returnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
+    mockBusinessService.getSelectedBusinessId.mockReturnValue(of(''));
+    mockOrderService.getOrderStats.mockReturnValue(of(mockStats));
+    mockOrderService.getOrders.mockReturnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -64,7 +70,7 @@ describe('DashboardComponent', () => {
   it('should load stats and orders on init', () => {
     expect(component.stats).toEqual(mockStats);
     expect(component.recentOrders.length).toBe(2);
-    expect(component.loading).toBeFalse();
+    expect(component.loading).toBe(false);
   });
 
   it('should call getOrderStats with no businessId when none selected', () => {
@@ -73,14 +79,14 @@ describe('DashboardComponent', () => {
 
   it('should call getOrders with limit 10', () => {
     expect(mockOrderService.getOrders).toHaveBeenCalledWith(
-      jasmine.objectContaining({ limit: 10 })
+      expect.objectContaining({ limit: 10 })
     );
   });
 
   it('should call getOrderStats with businessId when business selected', async () => {
-    mockBusinessService.getSelectedBusinessId.and.returnValue(of('biz-001'));
-    mockOrderService.getOrderStats.and.returnValue(of(mockStats));
-    mockOrderService.getOrders.and.returnValue(of({ orders: [], total: 0, page: 1, limit: 10 }));
+    mockBusinessService.getSelectedBusinessId.mockReturnValue(of('biz-001'));
+    mockOrderService.getOrderStats.mockReturnValue(of(mockStats));
+    mockOrderService.getOrders.mockReturnValue(of({ orders: [], total: 0, page: 1, limit: 10 }));
 
     fixture = TestBed.createComponent(DashboardComponent);
     component = fixture.componentInstance;
