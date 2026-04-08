@@ -174,8 +174,8 @@ jobs:
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/backend  -n "$NAMESPACE" --timeout=120s
-          kubectl rollout status deployment/frontend -n "$NAMESPACE" --timeout=120s
+          kubectl rollout status deployment/backend  -n "$NAMESPACE" --timeout=300s
+          kubectl rollout status deployment/frontend -n "$NAMESPACE" --timeout=300s
 
       - name: Print deployment status
         if: always()
