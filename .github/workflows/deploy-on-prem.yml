@@ -99,7 +99,8 @@ jobs:
           # ── Deploy ─────────────────────────────────────────────────────
 
           echo "$1" | base64 -d > "$APP_DIR/.env"
-          chmod 600 "$APP_DIR/.env"
+          chown www-data:www-data "$APP_DIR/.env"
+          chmod 640 "$APP_DIR/.env"
 
           git -C "$APP_DIR" pull origin main
 
