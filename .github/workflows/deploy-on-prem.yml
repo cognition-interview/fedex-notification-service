@@ -34,13 +34,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: >-
-            {
-              "clientId": "${{ secrets.AZURE_APP_ID }}",
-              "clientSecret": "${{ secrets.AZURE_PASSWORD }}",
-              "tenantId": "${{ secrets.AZURE_TENANT_ID }}",
-              "subscriptionId": "${{ vars.AZURE_SUBSCRIPTION_ID }}"
-            }
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
 
       # ── 2. Base64-encode the .env so special characters survive transfer ─
       #       (Azure connection strings commonly contain = ; @ : which would
