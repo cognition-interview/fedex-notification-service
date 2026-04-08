@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+local.settings.json
+.python_packages/
+getting_started.md
+.vscode/

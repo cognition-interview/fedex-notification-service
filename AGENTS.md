@@ -831,6 +831,7 @@ cd frontend && npm test
 | `AZURE_APP_ID` | Azure service principal app ID (for `az login`) |
 | `AZURE_PASSWORD` | Azure service principal password |
 | `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `FUNCTION_APP_URL` | Azure Function App base URL (e.g., `https://fedex-update-status.azurewebsites.net`). The PHP backend proxies `PATCH /api/orders/{id}/status` to this URL. |
 
 The `.env` file is loaded by `vlucas/phpdotenv` from the repo root (two directories above `backend/public/index.php`).
 

@@ -43,6 +43,12 @@
     },
     "communicationServiceDataLocation": {
       "value": "unitedstates"
+    },
+    "functionAppName": {
+      "value": "fedex-update-status"
+    },
+    "functionStorageAccountName": {
+      "value": "fedexfuncsa"
     }
   }
 }

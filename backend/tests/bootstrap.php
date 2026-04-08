@@ -8,3 +8,4 @@ require __DIR__ . '/../vendor/autoload.php';
 $_ENV['POSTGRES_CONNECTION_STRING'] = 'postgresql://user:pass@localhost:5432/testdb';
 $_ENV['AZURE_EMAIL_CONNECTION_STRING'] = 'endpoint=https://test.communication.azure.com;accesskey=' . base64_encode('test-key');
 $_ENV['AZURE_EMAIL_FROM_ADDRESS'] = 'noreply@test.com';
+$_ENV['FUNCTION_APP_URL'] = 'https://fedex-update-status.azurewebsites.net';
