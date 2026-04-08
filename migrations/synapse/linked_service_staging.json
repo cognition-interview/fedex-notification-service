@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "type": "AzureBlobFS",
+    "typeProperties": {
+      "url": "https://fedexstorageus.dfs.core.windows.net"
+    }
+  }
+}

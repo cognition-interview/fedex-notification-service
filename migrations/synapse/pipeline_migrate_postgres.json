@@ -2,9 +2,44 @@
   "properties": {
     "activities": [
       {
+        "name": "TruncateAllTables",
+        "type": "Script",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.00:10:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30
+        },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "NonQuery",
+              "text": "TRUNCATE TABLE dbo.notifications; TRUNCATE TABLE dbo.shipment_events; TRUNCATE TABLE dbo.orders; TRUNCATE TABLE dbo.businesses;"
+            }
+          ]
+        },
+        "linkedServiceName": {
+          "referenceName": "fedexsynapseus-WorkspaceDefaultSqlServer",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "DBName": "fedexpool"
+          }
+        }
+      },
+      {
         "name": "CopyBusinesses",
         "type": "Copy",
-        "dependsOn": [],
+        "dependsOn": [
+          {
+            "activity": "TruncateAllTables",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.01:00:00",
+          "retry": 3,
+          "retryIntervalInSeconds": 30
+        },
         "typeProperties": {
           "source": {
             "type": "AzurePostgreSqlSource",
@@ -12,8 +47,16 @@
           },
           "sink": {
             "type": "SqlDWSink",
-            "allowPolyBase": false,
+            "allowCopyCommand": true,
             "writeBehavior": "Insert"
+          },
+          "enableStaging": true,
+          "stagingSettings": {
+            "linkedServiceName": {
+              "referenceName": "SynapseStorageStaging",
+              "type": "LinkedServiceReference"
+            },
+            "path": "synapse/staging"
           }
         },
         "inputs": [
@@ -30,14 +73,44 @@
         ]
       },
       {
-        "name": "CopyOrders",
-        "type": "Copy",
+        "name": "ValidateBusinesses",
+        "type": "Lookup",
         "dependsOn": [
           {
             "activity": "CopyBusinesses",
             "dependencyConditions": ["Succeeded"]
           }
         ],
+        "policy": {
+          "timeout": "0.00:10:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30
+        },
+        "typeProperties": {
+          "source": {
+            "type": "SqlDWSource",
+            "sqlReaderQuery": "SELECT 'businesses' AS table_name, COUNT(*) AS row_count FROM dbo.businesses"
+          },
+          "dataset": {
+            "referenceName": "SinkBusinesses",
+            "type": "DatasetReference"
+          }
+        }
+      },
+      {
+        "name": "CopyOrders",
+        "type": "Copy",
+        "dependsOn": [
+          {
+            "activity": "ValidateBusinesses",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.01:00:00",
+          "retry": 3,
+          "retryIntervalInSeconds": 30
+        },
         "typeProperties": {
           "source": {
             "type": "AzurePostgreSqlSource",
@@ -45,8 +118,16 @@
           },
           "sink": {
             "type": "SqlDWSink",
-            "allowPolyBase": false,
+            "allowCopyCommand": true,
             "writeBehavior": "Insert"
+          },
+          "enableStaging": true,
+          "stagingSettings": {
+            "linkedServiceName": {
+              "referenceName": "SynapseStorageStaging",
+              "type": "LinkedServiceReference"
+            },
+            "path": "synapse/staging"
           }
         },
         "inputs": [
@@ -63,14 +144,44 @@
         ]
       },
       {
-        "name": "CopyShipmentEvents",
-        "type": "Copy",
+        "name": "ValidateOrders",
+        "type": "Lookup",
         "dependsOn": [
           {
             "activity": "CopyOrders",
             "dependencyConditions": ["Succeeded"]
           }
         ],
+        "policy": {
+          "timeout": "0.00:10:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30
+        },
+        "typeProperties": {
+          "source": {
+            "type": "SqlDWSource",
+            "sqlReaderQuery": "SELECT 'orders' AS table_name, COUNT(*) AS row_count FROM dbo.orders"
+          },
+          "dataset": {
+            "referenceName": "SinkOrders",
+            "type": "DatasetReference"
+          }
+        }
+      },
+      {
+        "name": "CopyShipmentEvents",
+        "type": "Copy",
+        "dependsOn": [
+          {
+            "activity": "ValidateOrders",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.01:00:00",
+          "retry": 3,
+          "retryIntervalInSeconds": 30
+        },
         "typeProperties": {
           "source": {
             "type": "AzurePostgreSqlSource",
@@ -78,8 +189,16 @@
           },
           "sink": {
             "type": "SqlDWSink",
-            "allowPolyBase": false,
+            "allowCopyCommand": true,
             "writeBehavior": "Insert"
+          },
+          "enableStaging": true,
+          "stagingSettings": {
+            "linkedServiceName": {
+              "referenceName": "SynapseStorageStaging",
+              "type": "LinkedServiceReference"
+            },
+            "path": "synapse/staging"
           }
         },
         "inputs": [
@@ -100,10 +219,15 @@
         "type": "Copy",
         "dependsOn": [
           {
-            "activity": "CopyOrders",
+            "activity": "ValidateOrders",
             "dependencyConditions": ["Succeeded"]
           }
         ],
+        "policy": {
+          "timeout": "0.01:00:00",
+          "retry": 3,
+          "retryIntervalInSeconds": 30
+        },
         "typeProperties": {
           "source": {
             "type": "AzurePostgreSqlSource",
@@ -111,8 +235,16 @@
           },
           "sink": {
             "type": "SqlDWSink",
-            "allowPolyBase": false,
+            "allowCopyCommand": true,
             "writeBehavior": "Insert"
+          },
+          "enableStaging": true,
+          "stagingSettings": {
+            "linkedServiceName": {
+              "referenceName": "SynapseStorageStaging",
+              "type": "LinkedServiceReference"
+            },
+            "path": "synapse/staging"
           }
         },
         "inputs": [
@@ -127,6 +259,56 @@
             "type": "DatasetReference"
           }
         ]
+      },
+      {
+        "name": "ValidateShipmentEvents",
+        "type": "Lookup",
+        "dependsOn": [
+          {
+            "activity": "CopyShipmentEvents",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.00:10:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30
+        },
+        "typeProperties": {
+          "source": {
+            "type": "SqlDWSource",
+            "sqlReaderQuery": "SELECT 'shipment_events' AS table_name, COUNT(*) AS row_count FROM dbo.shipment_events"
+          },
+          "dataset": {
+            "referenceName": "SinkShipmentEvents",
+            "type": "DatasetReference"
+          }
+        }
+      },
+      {
+        "name": "ValidateNotifications",
+        "type": "Lookup",
+        "dependsOn": [
+          {
+            "activity": "CopyNotifications",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.00:10:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30
+        },
+        "typeProperties": {
+          "source": {
+            "type": "SqlDWSource",
+            "sqlReaderQuery": "SELECT 'notifications' AS table_name, COUNT(*) AS row_count FROM dbo.notifications"
+          },
+          "dataset": {
+            "referenceName": "SinkNotifications",
+            "type": "DatasetReference"
+          }
+        }
       }
     ]
   }
