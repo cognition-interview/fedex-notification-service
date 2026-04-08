@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── Configuration (override with env vars) ────────────────────────────────────
-RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-fedex-aks-rg}"
+RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-fedex}"
 LOCATION="${AZURE_LOCATION:-eastus}"
 AKS_CLUSTER="${AKS_CLUSTER_NAME:-fedex-aks}"
 ACR_NAME="${ACR_NAME:-fedexacr$(openssl rand -hex 4)}"

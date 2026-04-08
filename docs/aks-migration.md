@@ -113,7 +113,7 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 ```bash
 # Set configuration (optional — defaults are sensible)
-export AZURE_RESOURCE_GROUP="fedex-aks-rg"
+export AZURE_RESOURCE_GROUP="fedex"
 export AZURE_LOCATION="eastus"
 export AKS_CLUSTER_NAME="fedex-aks"
 
