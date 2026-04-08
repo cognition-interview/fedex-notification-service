@@ -137,6 +137,26 @@ jobs:
             --from-literal=AZURE_EMAIL_FROM_ADDRESS='${{ secrets.AZURE_EMAIL_FROM_ADDRESS }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Ensure NGINX Ingress Controller is installed
+        run: |
+          if ! kubectl get deployment ingress-nginx-controller -n ingress-nginx &>/dev/null; then
+            echo "Installing NGINX Ingress Controller..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+            echo "Waiting for ingress controller to be ready..."
+            kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=120s
+          else
+            echo "NGINX Ingress Controller already installed."
+          fi
+
+      - name: Clean up stale ReplicaSets
+        run: |
+          for deploy in backend frontend; do
+            for rs in $(kubectl get rs -n "$NAMESPACE" -l app=$deploy -o jsonpath='{range .items[?(@.spec.replicas==0)]}{.metadata.name}{"\n"}{end}'); do
+              echo "Deleting stale ReplicaSet: $rs"
+              kubectl delete rs "$rs" -n "$NAMESPACE"
+            done
+          done
+
       - name: Apply Kubernetes manifests
         env:
           TAG: ${{ needs.build.outputs.image_tag }}

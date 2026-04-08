@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/part-of: fedex-notification-service
 spec:
   replicas: 1
+  revisionHistoryLimit: 1
   strategy:
     type: Recreate
   selector:
