@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: false
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
 
 env:
   ACR_NAME: ${{ vars.ACR_NAME }}
