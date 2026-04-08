@@ -41,6 +41,7 @@ $app->add(function ($request, $handler) {
 $app->get('/api/orders/stats',       [OrderController::class, 'getOrderStats']);
 $app->get('/api/orders',             [OrderController::class, 'getOrders']);
 $app->get('/api/orders/{id}',        [OrderController::class, 'getOrderById']);
+$app->patch('/api/orders/{id}/status', [OrderController::class, 'updateOrderStatus']);
 
 // ── Businesses ────────────────────────────────────────────────────────────────
 $app->get('/api/businesses',         [BusinessController::class, 'getBusinesses']);
