@@ -137,6 +137,26 @@ jobs:
             --from-literal=AZURE_EMAIL_FROM_ADDRESS='${{ secrets.AZURE_EMAIL_FROM_ADDRESS }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Ensure NGINX Ingress Controller is installed
+        run: |
+          if ! kubectl get deployment ingress-nginx-controller -n ingress-nginx &>/dev/null; then
+            echo "Installing NGINX Ingress Controller..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+            echo "Waiting for ingress controller to be ready..."
+            kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=120s
+          else
+            echo "NGINX Ingress Controller already installed."
+          fi
+
+      - name: Clean up stale ReplicaSets
+        run: |
+          for deploy in backend frontend; do
+            for rs in $(kubectl get rs -n "$NAMESPACE" -l app=$deploy -o jsonpath='{range .items[?(@.spec.replicas==0)]}{.metadata.name}{"\n"}{end}'); do
+              echo "Deleting stale ReplicaSet: $rs"
+              kubectl delete rs "$rs" -n "$NAMESPACE"
+            done
+          done
+
       - name: Apply Kubernetes manifests
         env:
           TAG: ${{ needs.build.outputs.image_tag }}
@@ -165,3 +185,13 @@ jobs:
           echo ""
           echo "── Ingress ──"
           kubectl get ingress -n "$NAMESPACE"
+          echo ""
+          echo "── Public Endpoint ──"
+          EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$EXTERNAL_IP" ]; then
+            echo "App URL:      http://${EXTERNAL_IP}"
+            echo "API endpoint: http://${EXTERNAL_IP}/api/businesses?limit=1"
+          else
+            echo "⚠ Ingress controller external IP not yet assigned. Run:"
+            echo "  kubectl get svc -n ingress-nginx ingress-nginx-controller"
+          fi
