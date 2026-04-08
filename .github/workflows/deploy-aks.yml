@@ -172,6 +172,15 @@ jobs:
           sed "s|image: IMAGE_PLACEHOLDER|image: fedexcr.azurecr.io/fedex-frontend:${TAG}|" \
             k8s/frontend-deployment.yaml | kubectl apply -f -
 
+      - name: Force fresh rollout
+        env:
+          TAG: ${{ needs.build.outputs.image_tag }}
+        run: |
+          # Ensure deployments always roll out fresh, even if kubectl apply said "unchanged"
+          # This prevents stuck rollouts from previous failed deploys
+          kubectl set image deployment/backend  backend=fedexcr.azurecr.io/fedex-backend:${TAG}  -n "$NAMESPACE"
+          kubectl set image deployment/frontend frontend=fedexcr.azurecr.io/fedex-frontend:${TAG} -n "$NAMESPACE"
+
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/backend  -n "$NAMESPACE" --timeout=120s
