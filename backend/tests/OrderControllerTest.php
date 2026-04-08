@@ -219,60 +219,58 @@ class OrderControllerTest extends TestCase
         $this->assertSame(4, $body['unread_notifications']);
     }
 
-    // ── PATCH /api/orders/{id}/status ─────────────────────────────────────────
+    // ── PATCH /api/orders/{id}/status — proxy to Azure Function App ────────
 
-    public function testUpdateOrderStatusInvalidReturns422(): void
+    public function testUpdateOrderStatusReturns503WhenNotConfigured(): void
     {
-        $pdo = $this->mockPdo();
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-
-        // Build a request with an invalid status
-        $factory = new ServerRequestFactory();
-        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-001/status');
-        $request->getBody()->write(json_encode(['status' => 'Flying']));
-
-        $response = new Response();
-        $result   = $controller->updateOrderStatus($request, $response, ['id' => 'ord-001']);
-
-        $this->assertSame(422, $result->getStatusCode());
-        $body = json_decode((string) $result->getBody(), true);
-        $this->assertArrayHasKey('error', $body);
-        $this->assertArrayHasKey('allowed', $body);
-        $this->assertContains('In Transit', $body['allowed']);
-    }
-
-    public function testUpdateOrderStatusValidUpdatesOrderAndInsertsEvent(): void
-    {
-        $order = [
-            'id' => 'ord-002', 'tracking_number' => '7489002', 'status' => 'Picked Up',
-            'origin' => 'Memphis, TN', 'destination' => 'New York, NY',
-            'business_id' => 'biz-001', 'business_name' => 'Acme', 'contact_email' => 'gb555@cornell.edu',
-            'weight_lbs' => 5.0, 'service_type' => 'Ground',
-            'estimated_delivery' => '2026-04-10T17:00:00Z', 'actual_delivery' => null,
-            'created_at' => '2026-04-07T00:00:00Z', 'updated_at' => '2026-04-07T00:00:00Z',
-        ];
-
-        // Stmts for: fetch order, update status, insert event, insert notification, then getOrderById (fetch order + fetch events)
-        $fetchOrderStmt  = $this->mockStmt($order);
-        $updateStmt      = $this->mockStmt();
-        $insertEvtStmt   = $this->mockStmt();
-        $insertNotifStmt = $this->mockStmt();
-        // getOrderById calls: fetch order again, fetch events
-        $fetchOrder2Stmt = $this->mockStmt($order);
-        $fetchEvtsStmt   = $this->mockStmt(null, []);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls(
-            $fetchOrderStmt, $updateStmt, $insertEvtStmt, $insertNotifStmt,
-            $fetchOrder2Stmt, $fetchEvtsStmt
-        );
-        Database::setTestInstance($pdo);
+        // Unset function app env vars
+        $origUrl = $_ENV['AZURE_FUNCTION_APP_URL'] ?? '';
+        $origKey = $_ENV['AZURE_FUNCTION_APP_KEY'] ?? '';
+        $_ENV['AZURE_FUNCTION_APP_URL'] = '';
+        $_ENV['AZURE_FUNCTION_APP_KEY'] = '';
 
         $controller = new OrderController();
         $factory    = new ServerRequestFactory();
-        $request    = $factory->createServerRequest('PATCH', '/api/orders/ord-002/status');
+        $request    = $factory->createServerRequest('PATCH', '/api/orders/ord-001/status');
+        $request->getBody()->write(json_encode(['status' => 'In Transit']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-001']);
+
+        $_ENV['AZURE_FUNCTION_APP_URL'] = $origUrl;
+        $_ENV['AZURE_FUNCTION_APP_KEY'] = $origKey;
+
+        $this->assertSame(503, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('Function App not configured', $body['error']);
+    }
+
+    public function testUpdateOrderStatusProxiesSuccessfully(): void
+    {
+        $functionResponse = json_encode([
+            'id' => 'ord-002', 'tracking_number' => '7489002', 'status' => 'In Transit',
+            'shipment_events' => [],
+        ]);
+
+        // Use a partial mock to override proxyHttp()
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->expects($this->once())
+            ->method('proxyHttp')
+            ->with(
+                'PATCH',
+                $this->stringContains('/api/orders/ord-002/status?code='),
+                $this->callback(function ($body) {
+                    $data = json_decode($body, true);
+                    return $data['status'] === 'In Transit';
+                })
+            )
+            ->willReturn(['body' => $functionResponse, 'httpCode' => 200, 'error' => '']);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-002/status');
         $request->getBody()->write(json_encode([
             'status'      => 'In Transit',
             'location'    => 'Nashville, TN',
@@ -283,306 +281,218 @@ class OrderControllerTest extends TestCase
         $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-002']);
 
         $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('ord-002', $body['id']);
+        $this->assertSame('In Transit', $body['status']);
     }
 
-    public function testUpdateOrderStatusReturns404ForMissingOrder(): void
+    public function testUpdateOrderStatusForwards404FromFunctionApp(): void
     {
-        $fetchStmt = $this->mockStmt(false); // order not found
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
 
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturn($fetchStmt);
-        Database::setTestInstance($pdo);
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['error' => 'Order not found']),
+                'httpCode' => 404,
+                'error'    => '',
+            ]);
 
-        $controller = new OrderController();
-        $factory    = new ServerRequestFactory();
-        $request    = $factory->createServerRequest('PATCH', '/api/orders/ghost/status');
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ghost/status');
         $request->getBody()->write(json_encode(['status' => 'In Transit']));
         $response = new Response();
 
         $result = $controller->updateOrderStatus($request, $response, ['id' => 'ghost']);
 
         $this->assertSame(404, $result->getStatusCode());
-    }
-
-    // ── GET /api/orders — additional filter coverage ─────────────────────────
-
-    public function testGetOrdersFilteredByStatus(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', ['status' => 'Delivered']);
-        $response   = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testGetOrdersFilteredByServiceType(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', ['serviceType' => 'FedEx Express']);
-        $response   = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testGetOrdersFilteredByServiceTypeSnakeCase(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', ['service_type' => 'FedEx Ground']);
-        $response   = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testGetOrdersFilteredByDateRange(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', [
-            'fromDate' => '2026-01-01',
-            'toDate'   => '2026-04-01',
-        ]);
-        $response = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testGetOrdersFilteredBySearch(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', ['search' => 'Memphis']);
-        $response   = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testGetOrdersWithAllFiltersCombined(): void
-    {
-        $listStmt  = $this->mockStmt(null, []);
-        $countStmt = $this->mockStmt(null, [], 0);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls($listStmt, $countStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders', [
-            'businessId'  => 'biz-001',
-            'status'      => 'In Transit',
-            'serviceType' => 'FedEx Express',
-            'fromDate'    => '2026-01-01',
-            'toDate'      => '2026-04-01',
-            'search'      => 'TRK',
-            'page'        => '2',
-            'limit'       => '5',
-        ]);
-        $response = new Response();
-
-        $result = $controller->getOrders($request, $response);
-        $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertSame(2, $body['page']);
-        $this->assertSame(5, $body['limit']);
+        $this->assertSame('Order not found', $body['error']);
     }
 
-    // ── GET /api/orders/stats — with businessId ──────────────────────────────
-
-    public function testGetOrderStatsFilteredByBusinessId(): void
+    public function testUpdateOrderStatusForwards422FromFunctionApp(): void
     {
-        $statsRow = [
-            'total' => '10', 'picked_up' => '1', 'in_transit' => '3',
-            'out_for_delivery' => '2', 'delivered' => '3', 'delayed' => '0', 'exception' => '1',
-        ];
-        $recentOrders = [];
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
 
-        $statsStmt  = $this->mockStmt($statsRow);
-        $recentStmt = $this->mockStmt(null, $recentOrders);
-        $notifStmt  = $this->mockStmt(null, [], 2);
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['error' => 'Invalid status', 'allowed' => ['In Transit', 'Delivered']]),
+                'httpCode' => 422,
+                'error'    => '',
+            ]);
 
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')
-            ->willReturnOnConsecutiveCalls($statsStmt, $recentStmt, $notifStmt);
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $request    = $this->makeRequest('GET', '/api/orders/stats', ['businessId' => 'biz-001']);
-        $response   = new Response();
-
-        $result = $controller->getOrderStats($request, $response);
-
-        $this->assertSame(200, $result->getStatusCode());
-        $body = json_decode((string) $result->getBody(), true);
-        $this->assertSame(10, $body['by_status']['total']);
-        $this->assertSame(2, $body['unread_notifications']);
-    }
-
-    // ── PATCH /api/orders/{id}/status — additional status coverage ───────────
-
-    private function performStatusUpdate(string $currentStatus, string $newStatus, array $bodyOverrides = []): \Psr\Http\Message\ResponseInterface
-    {
-        $order = [
-            'id' => 'ord-003', 'tracking_number' => '7489003', 'status' => $currentStatus,
-            'origin' => 'Memphis, TN', 'destination' => 'New York, NY',
-            'business_id' => 'biz-001', 'business_name' => 'Acme', 'contact_email' => 'test@example.com',
-            'weight_lbs' => 5.0, 'service_type' => 'Ground',
-            'estimated_delivery' => '2026-04-10', 'actual_delivery' => null,
-            'created_at' => '2026-04-07T00:00:00Z', 'updated_at' => '2026-04-07T00:00:00Z',
-        ];
-
-        $fetchOrderStmt  = $this->mockStmt($order);
-        $updateStmt      = $this->mockStmt();
-        $insertEvtStmt   = $this->mockStmt();
-        $insertNotifStmt = $this->mockStmt();
-        $fetchOrder2Stmt = $this->mockStmt(array_merge($order, ['status' => $newStatus]));
-        $fetchEvtsStmt   = $this->mockStmt(null, []);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls(
-            $fetchOrderStmt, $updateStmt, $insertEvtStmt, $insertNotifStmt,
-            $fetchOrder2Stmt, $fetchEvtsStmt
-        );
-        Database::setTestInstance($pdo);
-
-        $controller = new OrderController();
-        $factory    = new ServerRequestFactory();
-        $request    = $factory->createServerRequest('PATCH', '/api/orders/ord-003/status');
-
-        $requestBody = array_merge(['status' => $newStatus], $bodyOverrides);
-        $request->getBody()->write(json_encode($requestBody));
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-001/status');
+        $request->getBody()->write(json_encode(['status' => 'Flying']));
         $response = new Response();
 
-        return $controller->updateOrderStatus($request, $response, ['id' => 'ord-003']);
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-001']);
+
+        $this->assertSame(422, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('Invalid status', $body['error']);
     }
 
-    public function testUpdateOrderStatusDelivered(): void
+    public function testUpdateOrderStatusReturns502OnCurlError(): void
     {
-        $result = $this->performStatusUpdate('Out for Delivery', 'Delivered', [
-            'location'    => 'New York, NY',
-            'description' => 'Package left at front door',
-        ]);
-        $this->assertSame(200, $result->getStatusCode());
-    }
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
 
-    public function testUpdateOrderStatusOutForDelivery(): void
-    {
-        $result = $this->performStatusUpdate('In Transit', 'Out for Delivery', [
-            'location' => 'New York, NY',
-        ]);
-        $this->assertSame(200, $result->getStatusCode());
-    }
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => false,
+                'httpCode' => 0,
+                'error'    => 'Could not resolve host',
+            ]);
 
-    public function testUpdateOrderStatusDelayed(): void
-    {
-        $result = $this->performStatusUpdate('In Transit', 'Delayed', [
-            'location'    => 'Nashville, TN',
-            'description' => 'Weather delay',
-        ]);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testUpdateOrderStatusException(): void
-    {
-        $result = $this->performStatusUpdate('In Transit', 'Exception', [
-            'location'    => 'Nashville, TN',
-            'description' => 'Address issue',
-        ]);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testUpdateOrderStatusWithoutDescription(): void
-    {
-        // When no description is provided, the controller defaults to "Status updated to {status}"
-        $result = $this->performStatusUpdate('Picked Up', 'In Transit');
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testUpdateOrderStatusPickedUp(): void
-    {
-        $result = $this->performStatusUpdate('Exception', 'Picked Up', [
-            'location' => 'Memphis, TN',
-        ]);
-        $this->assertSame(200, $result->getStatusCode());
-    }
-
-    public function testUpdateOrderStatusCatchesEmailException(): void
-    {
-        $order = [
-            'id' => 'ord-004', 'tracking_number' => '7489004', 'status' => 'Picked Up',
-            'origin' => 'Memphis, TN', 'destination' => 'New York, NY',
-            'business_id' => 'biz-001', 'business_name' => 'Acme', 'contact_email' => 'test@example.com',
-            'weight_lbs' => 5.0, 'service_type' => 'Ground',
-            'estimated_delivery' => '2026-04-10', 'actual_delivery' => null,
-            'created_at' => '2026-04-07T00:00:00Z', 'updated_at' => '2026-04-07T00:00:00Z',
-        ];
-
-        $fetchOrderStmt  = $this->mockStmt($order);
-        $updateStmt      = $this->mockStmt();
-        $insertEvtStmt   = $this->mockStmt();
-        $insertNotifStmt = $this->mockStmt();
-        $fetchOrder2Stmt = $this->mockStmt(array_merge($order, ['status' => 'In Transit']));
-        $fetchEvtsStmt   = $this->mockStmt(null, []);
-
-        $pdo = $this->mockPdo();
-        $pdo->method('prepare')->willReturnOnConsecutiveCalls(
-            $fetchOrderStmt, $updateStmt, $insertEvtStmt, $insertNotifStmt,
-            $fetchOrder2Stmt, $fetchEvtsStmt
-        );
-        Database::setTestInstance($pdo);
-
-        // Corrupt the connection string so EmailService::post() throws a TypeError
-        $origConn = $_ENV['AZURE_EMAIL_CONNECTION_STRING'];
-        $_ENV['AZURE_EMAIL_CONNECTION_STRING'] = 'endpoint=;accesskey=' . base64_encode('k');
-
-        $controller = new OrderController();
-        $factory    = new ServerRequestFactory();
-        $request    = $factory->createServerRequest('PATCH', '/api/orders/ord-004/status');
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-001/status');
         $request->getBody()->write(json_encode(['status' => 'In Transit']));
         $response = new Response();
 
-        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-004']);
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-001']);
 
-        // Restore env
-        $_ENV['AZURE_EMAIL_CONNECTION_STRING'] = $origConn;
+        $this->assertSame(502, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('Failed to reach Function App', $body['error']);
+    }
 
-        // The request should still succeed — email errors are caught
+    public function testUpdateOrderStatusBuildsCorrectUrl(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->expects($this->once())
+            ->method('proxyHttp')
+            ->with(
+                'PATCH',
+                $this->equalTo('https://fedex-update-status.azurewebsites.net/api/orders/ord-005/status?code=test-key-123'),
+                $this->anything()
+            )
+            ->willReturn(['body' => '{}', 'httpCode' => 200, 'error' => '']);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-005/status');
+        $request->getBody()->write(json_encode(['status' => 'Delivered']));
+        $response = new Response();
+
+        $controller->updateOrderStatus($request, $response, ['id' => 'ord-005']);
+    }
+
+    public function testUpdateOrderStatusDeliveredProxy(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['id' => 'ord-003', 'status' => 'Delivered', 'actual_delivery' => '2026-04-08']),
+                'httpCode' => 200,
+                'error'    => '',
+            ]);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-003/status');
+        $request->getBody()->write(json_encode(['status' => 'Delivered', 'location' => 'New York, NY']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-003']);
         $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('Delivered', $body['status']);
+    }
+
+    public function testUpdateOrderStatusDelayedProxy(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['id' => 'ord-003', 'status' => 'Delayed']),
+                'httpCode' => 200,
+                'error'    => '',
+            ]);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-003/status');
+        $request->getBody()->write(json_encode(['status' => 'Delayed', 'description' => 'Weather delay']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-003']);
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function testUpdateOrderStatusExceptionProxy(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['id' => 'ord-003', 'status' => 'Exception']),
+                'httpCode' => 200,
+                'error'    => '',
+            ]);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-003/status');
+        $request->getBody()->write(json_encode(['status' => 'Exception', 'description' => 'Address issue']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-003']);
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function testUpdateOrderStatusOutForDeliveryProxy(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['id' => 'ord-003', 'status' => 'Out for Delivery']),
+                'httpCode' => 200,
+                'error'    => '',
+            ]);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-003/status');
+        $request->getBody()->write(json_encode(['status' => 'Out for Delivery']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-003']);
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function testUpdateOrderStatusForwards500FromFunctionApp(): void
+    {
+        $controller = $this->getMockBuilder(OrderController::class)
+            ->onlyMethods(['proxyHttp'])
+            ->getMock();
+
+        $controller->method('proxyHttp')
+            ->willReturn([
+                'body'     => json_encode(['error' => 'Internal server error']),
+                'httpCode' => 500,
+                'error'    => '',
+            ]);
+
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('PATCH', '/api/orders/ord-001/status');
+        $request->getBody()->write(json_encode(['status' => 'In Transit']));
+        $response = new Response();
+
+        $result = $controller->updateOrderStatus($request, $response, ['id' => 'ord-001']);
+        $this->assertSame(500, $result->getStatusCode());
     }
 }

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace FedEx\Controllers;
 
 use FedEx\Database;
-use FedEx\Services\EmailService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -203,96 +202,77 @@ class OrderController
     }
 
     // ── PATCH /api/orders/{id}/status ─────────────────────────────────────────
+    //
+    // Proxies the request to the Azure Function App (fedex-update-status).
+    // The Function App performs all side effects: DB update, shipment event,
+    // notification, and email. This endpoint simply forwards the request and
+    // returns the Function App's response.
 
     public function updateOrderStatus(Request $request, Response $response, array $args): Response
     {
-        $body     = (array) json_decode((string) $request->getBody(), true);
-        $newStatus = trim($body['status'] ?? '');
-        $location  = trim($body['location'] ?? 'Unknown');
-        $description = trim($body['description'] ?? '');
-        $eventDescription = $description ?: "Status updated to {$newStatus}";
+        $functionUrl = $_ENV['AZURE_FUNCTION_APP_URL'] ?? '';
+        $functionKey = $_ENV['AZURE_FUNCTION_APP_KEY'] ?? '';
 
-        if (!in_array($newStatus, self::VALID_STATUSES, true)) {
+        if ($functionUrl === '' || $functionKey === '') {
+            error_log('[updateOrderStatus] AZURE_FUNCTION_APP_URL or AZURE_FUNCTION_APP_KEY not configured');
             return $this->json($response, [
-                'error'   => 'Invalid status',
-                'allowed' => self::VALID_STATUSES,
-            ], 422);
+                'error' => 'Function App not configured',
+            ], 503);
         }
 
-        $db = Database::getInstance();
+        $orderId = $args['id'];
+        $url = rtrim($functionUrl, '/') . "/api/orders/{$orderId}/status?code=" . urlencode($functionKey);
 
-        // Fetch order + business
-        $stmt = $db->prepare(
-            'SELECT o.*, b.id as business_id, b.name as business_name, b.contact_email
-             FROM orders o
-             JOIN businesses b ON o.business_id = b.id
-             WHERE o.id = :id'
-        );
-        $stmt->execute([':id' => $args['id']]);
-        $order = $stmt->fetch();
+        $requestBody = (string) $request->getBody();
 
-        if (!$order) {
-            return $this->json($response, ['error' => 'Order not found'], 404);
+        /** @var array{body: string|false, httpCode: int, error: string} */
+        $result = $this->proxyHttp('PATCH', $url, $requestBody);
+
+        if ($result['body'] === false || $result['error'] !== '') {
+            error_log("[updateOrderStatus] Proxy error: {$result['error']}");
+            return $this->json($response, [
+                'error' => 'Failed to reach Function App',
+            ], 502);
         }
 
-        // Update status
-        $db->prepare(
-            "UPDATE orders
-             SET status = :status::order_status,
-                 actual_delivery = CASE
-                   WHEN :status = 'Delivered' THEN NOW()
-                   ELSE actual_delivery
-                 END,
-                 updated_at = NOW()
-             WHERE id = :id"
-        )->execute([':status' => $newStatus, ':id' => $args['id']]);
+        // Forward the Function App's response as-is
+        $response->getBody()->write($result['body']);
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus($result['httpCode']);
+    }
 
-        // Insert shipment event
-        $eventType = self::STATUS_TO_EVENT[$newStatus] ?? 'In Transit';
-        $db->prepare(
-            "INSERT INTO shipment_events (id, order_id, event_type, location, description, occurred_at)
-             VALUES (gen_random_uuid(), :order_id, :event_type::event_type, :location, :description, NOW())"
-        )->execute([
-            ':order_id'    => $args['id'],
-            ':event_type'  => $eventType,
-            ':location'    => $location,
-            ':description' => $eventDescription,
+    /**
+     * Make an HTTP request to the Azure Function App.
+     * Extracted so tests can override without needing real network access.
+     *
+     * @return array{body: string|false, httpCode: int, error: string}
+     */
+    protected function proxyHttp(string $method, string $url, string $body): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_POSTFIELDS     => $body,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
         ]);
 
-        // Insert notification row
-        $notifType = match ($newStatus) {
-            'Delivered'        => 'Delivery Confirmed',
-            'Out for Delivery' => 'Out for Delivery',
-            'Delayed'          => 'Delay Alert',
-            'Exception'        => 'Exception Alert',
-            default            => 'Status Update',
-        };
-        $db->prepare(
-            "INSERT INTO notifications (id, order_id, business_id, type, message, is_read, created_at)
-             VALUES (gen_random_uuid(), :order_id, :business_id, :type::notification_type, :message, false, NOW())"
-        )->execute([
-            ':order_id'    => $args['id'],
-            ':business_id' => $order['business_id'],
-            ':type'        => $notifType,
-            ':message'     => "Tracking #{$order['tracking_number']}: status changed to {$newStatus}.",
-        ]);
+        $responseBody = curl_exec($ch);
+        $httpCode     = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError    = curl_error($ch);
+        curl_close($ch);
 
-        // Send email (non-blocking)
-        try {
-            $business = [
-                'contact_email' => $order['contact_email'],
-                'name'          => $order['business_name'],
-            ];
-            $sent = (new EmailService())->sendStatusUpdateEmail($order, $business, $newStatus, $eventDescription);
-            if (!$sent) {
-                error_log('[updateOrderStatus] Email send returned false for order ' . $args['id']);
-            }
-        } catch (\Throwable $e) {
-            error_log('[updateOrderStatus] Email failed: ' . $e->getMessage());
-        }
-
-        // Return refreshed order
-        return $this->getOrderById($request, $response, $args);
+        return [
+            'body'     => $responseBody,
+            'httpCode' => $httpCode,
+            'error'    => $curlError,
+        ];
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
