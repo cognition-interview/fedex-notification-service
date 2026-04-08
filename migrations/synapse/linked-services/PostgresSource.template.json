@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "type": "AzurePostgreSql",
+    "typeProperties": {
+      "connectionString": "Server=__POSTGRES_HOST__;Database=__POSTGRES_DB__;Port=__POSTGRES_PORT__;UID=__POSTGRES_USER__;Password=__POSTGRES_PASSWORD__;SSL Mode=Require;Trust Server Certificate=true;"
+    }
+  }
+}

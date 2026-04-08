@@ -1,0 +1,9 @@
+{
+  "properties": {
+    "type": "AzurePostgreSqlTable",
+    "linkedServiceName": {
+      "referenceName": "PostgresSource",
+      "type": "LinkedServiceReference"
+    }
+  }
+}
