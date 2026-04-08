@@ -18,3 +18,4 @@ k8s/secrets.yaml
 # OS
 .DS_Store
 Thumbs.db
+function-app/__pycache__/

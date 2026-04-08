@@ -1,0 +1,19 @@
+[project]
+name = "fedex-update-status-function"
+version = "1.0.0"
+description = "Azure Function App for FedEx order status updates"
+requires-python = ">=3.12"
+dependencies = [
+    "azure-functions>=1.21.0",
+    "psycopg2-binary>=2.9.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
