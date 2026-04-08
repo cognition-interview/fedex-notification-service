@@ -580,6 +580,17 @@ All services use in-memory caching via `Map` + `shareReplay(1)` for GET requests
 
 ### ARM Templates (Infrastructure as Code)
 
+> **Policy: All new Azure resources MUST be deployed via ARM templates.**
+>
+> Do **not** use imperative `az` CLI commands (e.g., `az resource create`, `az aks create`) to provision or modify Azure infrastructure. Instead:
+>
+> 1. Add the new resource definition to `infra/azuredeploy.json`
+> 2. Add any new parameters to both `infra/azuredeploy.json` and `infra/azuredeploy.parameters.json`
+> 3. Validate locally with `./scripts/deploy-infra.sh --what-if`
+> 4. Deploy via the **Deploy Infrastructure** GitHub Actions workflow (`workflow_dispatch`) or locally with `./scripts/deploy-infra.sh`
+>
+> This ensures all infrastructure is version-controlled, reproducible, and reviewable through pull requests. The only exception is Kubernetes-level resources (namespaces, secrets, deployments, services, ingress) which are managed via `kubectl` and the manifests in `k8s/`.
+
 Azure infrastructure is managed declaratively via ARM templates in the `infra/` directory.
 
 **Files:**
@@ -641,6 +652,27 @@ Azure infrastructure is managed declaratively via ARM templates in the `infra/` 
 - The AcrPull role assignment is conditional (`assignAcrPullRole` parameter) because it requires `Microsoft.Authorization/roleAssignments/write` permission (User Access Administrator or Owner role). If the deploying service principal only has Contributor, set this to `false` and use `az aks update --attach-acr` instead.
 - All resources are deployed to the `fedex` resource group in `centralus`.
 - The template uses incremental deployment mode — existing resources not in the template are left untouched.
+
+**Adding a new Azure resource:**
+
+When you need to provision a new Azure resource (e.g., a Storage Account, App Service, Function App, Key Vault):
+
+1. **Define the resource** in `infra/azuredeploy.json` under the `resources` array. Use the appropriate ARM resource type and API version (refer to [Azure ARM template reference](https://learn.microsoft.com/en-us/azure/templates/)).
+2. **Parameterize** any values that may vary across environments (names, SKUs, sizes). Add parameters with sensible defaults.
+3. **Add outputs** if downstream steps need values from the new resource (e.g., connection strings, hostnames).
+4. **Update `infra/azuredeploy.parameters.json`** with production values for any new parameters.
+5. **Validate** by running `./scripts/deploy-infra.sh --what-if` to preview the changes.
+6. **Open a PR** with the template changes for review before deploying.
+7. **Deploy** via the GitHub Actions workflow (**Actions → Deploy Infrastructure → Run workflow**) or locally with `./scripts/deploy-infra.sh`.
+
+**GitHub Actions workflow:**
+
+The `Deploy Infrastructure` workflow (`.github/workflows/deploy-infra.yml`) provides a manual trigger to deploy ARM templates:
+- **Trigger:** `workflow_dispatch` (manual only — **Actions → Deploy Infrastructure → Run workflow**)
+- **Inputs:**
+  - `mode`: `what-if` (preview, default) or `deploy` (apply changes)
+  - `assignAcrPullRole`: toggle for the AcrPull role assignment (default: `false`)
+- **Steps:** Azure login → validate template → what-if or deploy → show outputs
 
 ### Docker
 
