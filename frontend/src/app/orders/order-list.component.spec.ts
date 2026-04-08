@@ -1,8 +1,8 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
-import { Router } from '@angular/router';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { OrderListComponent } from './order-list.component';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
@@ -10,9 +10,8 @@ import { BusinessService } from '../services/business.service';
 describe('OrderListComponent', () => {
   let fixture: ComponentFixture<OrderListComponent>;
   let component: OrderListComponent;
-  let mockOrderService: jasmine.SpyObj<OrderService>;
-  let mockBusinessService: jasmine.SpyObj<BusinessService>;
-  let mockRouter: jasmine.SpyObj<Router>;
+  let mockOrderService: { getOrders: ReturnType<typeof vi.fn> };
+  let mockBusinessService: { getSelectedBusinessId: ReturnType<typeof vi.fn> };
 
   const mockOrders = [
     {
@@ -32,12 +31,15 @@ describe('OrderListComponent', () => {
   ];
 
   beforeEach(async () => {
-    mockOrderService = jasmine.createSpyObj('OrderService', ['getOrders']);
-    mockBusinessService = jasmine.createSpyObj('BusinessService', ['getSelectedBusinessId']);
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockOrderService = {
+      getOrders: vi.fn(),
+    };
+    mockBusinessService = {
+      getSelectedBusinessId: vi.fn(),
+    };
 
-    mockBusinessService.getSelectedBusinessId.and.returnValue(of(''));
-    mockOrderService.getOrders.and.returnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
+    mockBusinessService.getSelectedBusinessId.mockReturnValue(of(''));
+    mockOrderService.getOrders.mockReturnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
 
     await TestBed.configureTestingModule({
       imports: [OrderListComponent],
@@ -47,7 +49,9 @@ describe('OrderListComponent', () => {
         { provide: BusinessService, useValue: mockBusinessService },
         {
           provide: ActivatedRoute,
-          useValue: { queryParamMap: of(convertToParamMap({})) },
+          useValue: {
+            snapshot: { queryParamMap: convertToParamMap({}) },
+          },
         },
       ],
     }).compileComponents();
@@ -82,7 +86,7 @@ describe('OrderListComponent', () => {
     component.filterStatus = 'Delivered';
     component.applyFilters();
     expect(mockOrderService.getOrders).toHaveBeenCalledWith(
-      jasmine.objectContaining({ status: 'Delivered' })
+      expect.objectContaining({ status: 'Delivered' })
     );
     expect(component.page).toBe(1);
   });

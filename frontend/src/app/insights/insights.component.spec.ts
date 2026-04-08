@@ -1,13 +1,14 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { InsightsComponent } from './insights.component';
 import { InsightsService } from '../services/insights.service';
 
 describe('InsightsComponent', () => {
   let fixture: ComponentFixture<InsightsComponent>;
   let component: InsightsComponent;
-  let mockInsightsService: jasmine.SpyObj<InsightsService>;
+  let mockInsightsService: { getDeliveryInsights: ReturnType<typeof vi.fn> };
 
   const mockInsights = {
     avg_delivery_time_by_service: [
@@ -31,8 +32,10 @@ describe('InsightsComponent', () => {
   };
 
   beforeEach(async () => {
-    mockInsightsService = jasmine.createSpyObj('InsightsService', ['getDeliveryInsights']);
-    mockInsightsService.getDeliveryInsights.and.returnValue(of(mockInsights));
+    mockInsightsService = {
+      getDeliveryInsights: vi.fn(),
+    };
+    mockInsightsService.getDeliveryInsights.mockReturnValue(of(mockInsights));
 
     await TestBed.configureTestingModule({
       imports: [InsightsComponent],
@@ -55,7 +58,7 @@ describe('InsightsComponent', () => {
 
   it('should load insights on init', () => {
     expect(component.insights).toEqual(mockInsights);
-    expect(component.loading).toBeFalse();
+    expect(component.loading).toBe(false);
   });
 
   it('should build bar chart data from insights', () => {
