@@ -41,7 +41,14 @@ echo ""
 echo "▶ Logging in to ACR..."
 az acr login --name "${ACR_NAME}"
 
-# ── 2. Build images ──────────────────────────────────────────────────────────
+# ── 2. Install dependencies & build ──────────────────────────────────────────
+echo "▶ Installing backend dependencies..."
+composer install --working-dir="${REPO_ROOT}/backend" --no-dev --no-interaction --optimize-autoloader --prefer-dist
+
+echo "▶ Building frontend..."
+(cd "${REPO_ROOT}/frontend" && npm ci && npm run build)
+
+# ── 3. Build images ──────────────────────────────────────────────────────────
 echo "▶ Building backend image..."
 docker build \
   -t "${BACKEND_IMAGE}" \
