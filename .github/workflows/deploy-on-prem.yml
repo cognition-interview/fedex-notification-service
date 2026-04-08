@@ -56,7 +56,39 @@ jobs:
           creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
           auth-type: SERVICE_PRINCIPAL
 
-      # ── 3. Base64-encode the .env so special characters survive transfer ─
+      # ── 3. Create VM if it doesn't exist ────────────────────────────────
+      - name: Ensure VM exists
+        uses: azure/CLI@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            EXISTS=$(az vm show \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name           "${{ vars.AZURE_VM_NAME }}" \
+              --query          "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$EXISTS" ]; then
+              echo "==> VM not found, creating..."
+
+              az vm create \
+                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                --name           "${{ vars.AZURE_VM_NAME }}" \
+                --image          Ubuntu2404 \
+                --size           Standard_B2s \
+                --generate-ssh-keys \
+                --public-ip-sku  Standard
+
+              az vm open-port \
+                --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                --name           "${{ vars.AZURE_VM_NAME }}" \
+                --port           80
+
+              echo "==> VM created."
+            else
+              echo "==> VM already exists, skipping creation."
+            fi
+
+      # ── 4. Base64-encode the .env so special characters survive transfer ─
       #       (Azure connection strings commonly contain = ; @ : which would
       #        break naive shell interpolation)
       - name: Encode .env payload
@@ -69,7 +101,7 @@ jobs:
             | base64 -w0)
           echo "value=$ENV_B64" >> "$GITHUB_OUTPUT"
 
-      # ── 3. Write the VM script to a temp file, then invoke it ────────────
+      # ── 5. Write the VM script to a temp file, then invoke it ────────────
       #       Writing to a file first avoids heredoc-inside-quoted-string
       #       issues and keeps the script readable without escaping.
       #       run-command executes as root on the VM; no SSH key needed.
