@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-ACR_NAME="${ACR_NAME:?Set ACR_NAME to your Azure Container Registry name}"
+ACR_NAME="${ACR_NAME:-fedexcr}"
 TAG="${1:-$(git -C "${REPO_ROOT}" rev-parse --short HEAD)}"
 NAMESPACE="fedex"
 

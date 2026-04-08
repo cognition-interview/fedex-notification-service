@@ -111,23 +111,12 @@ az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 ### 2. Provision Infrastructure (One-Time)
 
-```bash
-# Set configuration (optional — defaults are sensible)
-export AZURE_RESOURCE_GROUP="fedex"
-export AZURE_LOCATION="eastus"
-export AKS_CLUSTER_NAME="fedex-aks"
+The ACR (`fedexcr`) and AKS cluster (`fedex-k8-cluster`) are already provisioned in the `fedex` resource group in `centralus`. If you need to re-provision:
 
-# Run provisioning
+```bash
 chmod +x scripts/provision-aks.sh
 ./scripts/provision-aks.sh
 ```
-
-This creates:
-- Resource group
-- Azure Container Registry (ACR)
-- AKS cluster (2 nodes, Standard_B2s)
-- NGINX Ingress Controller (via Helm)
-- `fedex` Kubernetes namespace
 
 ### 3. Create Kubernetes Secrets
 
@@ -143,13 +132,13 @@ kubectl create secret generic backend-secrets \
 
 ```bash
 chmod +x scripts/deploy.sh
-ACR_NAME=your-acr-name ./scripts/deploy.sh
+./scripts/deploy.sh
 ```
 
 Or deploy a specific tag:
 
 ```bash
-ACR_NAME=your-acr-name ./scripts/deploy.sh v1.0.0
+./scripts/deploy.sh v1.0.0
 ```
 
 ### 5. Verify Deployment
@@ -217,17 +206,16 @@ push to main
 └─────────┘     └───────────────┘     └────────────┘
 ```
 
-### Required GitHub Secrets & Variables
+### Required GitHub Secrets
+
+All configuration is hardcoded in the workflow (`ACR_NAME: fedexcr`, `AKS_CLUSTER: fedex-k8-cluster`, `AZURE_RESOURCE_GROUP: fedex`). You only need to add these **secrets**:
 
 | Type | Name | Description |
 |------|------|-------------|
 | Secret | `AZURE_APP_ID` | Service principal app ID |
 | Secret | `AZURE_PASSWORD` | Service principal password |
 | Secret | `AZURE_TENANT_ID` | Azure AD tenant ID |
-| Variable | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
-| Variable | `AZURE_RESOURCE_GROUP` | Resource group name |
-| Variable | `AKS_CLUSTER_NAME` | AKS cluster name |
-| Variable | `ACR_NAME` | ACR registry name |
+| Secret | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
 ---
 

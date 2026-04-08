@@ -14,13 +14,13 @@
 set -euo pipefail
 
 # ── Configuration (override with env vars) ────────────────────────────────────
-RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-fedex}"
-LOCATION="${AZURE_LOCATION:-eastus}"
-AKS_CLUSTER="${AKS_CLUSTER_NAME:-fedex-aks}"
-ACR_NAME="${ACR_NAME:-fedexacr$(openssl rand -hex 4)}"
+RESOURCE_GROUP="fedex"
+LOCATION="centralus"
+AKS_CLUSTER="fedex-k8-cluster"
+ACR_NAME="fedexcr"
 NODE_COUNT="${AKS_NODE_COUNT:-2}"
-NODE_VM_SIZE="${AKS_NODE_VM_SIZE:-Standard_B2s}"
-K8S_VERSION="${AKS_K8S_VERSION:-1.30}"
+NODE_VM_SIZE="${AKS_NODE_VM_SIZE:-Standard_A2_v2}"
+K8S_VERSION="${AKS_K8S_VERSION:-1.33}"
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo "  FedEx Notification Service — AKS Provisioning"

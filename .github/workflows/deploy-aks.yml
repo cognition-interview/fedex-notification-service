@@ -15,9 +15,9 @@ on:
           - staging
 
 env:
-  ACR_NAME: ${{ vars.ACR_NAME }}
-  AKS_CLUSTER: ${{ vars.AKS_CLUSTER_NAME }}
-  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'fedex' }}
+  ACR_NAME: fedexcr
+  AKS_CLUSTER: fedex-k8-cluster
+  AZURE_RESOURCE_GROUP: fedex
   NAMESPACE: fedex
 
 jobs:
@@ -70,30 +70,24 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}'
 
       - name: Log in to ACR
         run: az acr login --name "$ACR_NAME"
 
-      - name: Get ACR login server
-        id: acr
-        run: |
-          SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
-          echo "server=${SERVER}" >> "$GITHUB_OUTPUT"
-
       - name: Build & push backend
         run: |
           docker build \
-            -t "${{ steps.acr.outputs.server }}/fedex-backend:${{ steps.meta.outputs.tag }}" \
+            -t "fedexcr.azurecr.io/fedex-backend:${{ steps.meta.outputs.tag }}" \
             -f docker/backend/Dockerfile .
-          docker push "${{ steps.acr.outputs.server }}/fedex-backend:${{ steps.meta.outputs.tag }}"
+          docker push "fedexcr.azurecr.io/fedex-backend:${{ steps.meta.outputs.tag }}"
 
       - name: Build & push frontend
         run: |
           docker build \
-            -t "${{ steps.acr.outputs.server }}/fedex-frontend:${{ steps.meta.outputs.tag }}" \
+            -t "fedexcr.azurecr.io/fedex-frontend:${{ steps.meta.outputs.tag }}" \
             -f docker/frontend/Dockerfile .
-          docker push "${{ steps.acr.outputs.server }}/fedex-frontend:${{ steps.meta.outputs.tag }}"
+          docker push "fedexcr.azurecr.io/fedex-frontend:${{ steps.meta.outputs.tag }}"
 
   # ── 3. Deploy to AKS ──────────────────────────────────────────────────────
   deploy:
@@ -107,7 +101,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}'
 
       - name: Get AKS credentials
         run: |
@@ -116,26 +110,19 @@ jobs:
             --name "$AKS_CLUSTER" \
             --overwrite-existing
 
-      - name: Get ACR login server
-        id: acr
-        run: |
-          SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
-          echo "server=${SERVER}" >> "$GITHUB_OUTPUT"
-
       - name: Apply Kubernetes manifests
         env:
           TAG: ${{ needs.build.outputs.image_tag }}
-          ACR_SERVER: ${{ steps.acr.outputs.server }}
         run: |
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/backend-service.yaml
           kubectl apply -f k8s/frontend-service.yaml
           kubectl apply -f k8s/ingress.yaml
 
-          sed "s|image: IMAGE_PLACEHOLDER|image: ${ACR_SERVER}/fedex-backend:${TAG}|" \
+          sed "s|image: IMAGE_PLACEHOLDER|image: fedexcr.azurecr.io/fedex-backend:${TAG}|" \
             k8s/backend-deployment.yaml | kubectl apply -f -
 
-          sed "s|image: IMAGE_PLACEHOLDER|image: ${ACR_SERVER}/fedex-frontend:${TAG}|" \
+          sed "s|image: IMAGE_PLACEHOLDER|image: fedexcr.azurecr.io/fedex-frontend:${TAG}|" \
             k8s/frontend-deployment.yaml | kubectl apply -f -
 
       - name: Wait for rollout
