@@ -1,4 +1,4 @@
-name: Deploy to Azure VM (On-Prem)
+name: Deploy to On-Prem
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   deploy:
-    name: Provision & deploy to VM
+    name: Provision & deploy to on-prem
     runs-on: ubuntu-latest
 
     steps:
