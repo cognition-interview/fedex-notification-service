@@ -1,0 +1,153 @@
+name: Deploy to AKS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: false
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  AKS_CLUSTER: ${{ vars.AKS_CLUSTER_NAME }}
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'fedex' }}
+  NAMESPACE: fedex
+
+jobs:
+  # ── 1. Run tests before deploying ──────────────────────────────────────────
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo, pdo_pgsql
+
+      - name: Install backend dependencies
+        run: composer install --working-dir=backend --no-interaction
+
+      - name: Run PHPUnit
+        run: cd backend && ./vendor/bin/phpunit
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Run frontend tests
+        run: cd frontend && npm test
+
+  # ── 2. Build & push container images ───────────────────────────────────────
+  build:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+
+      - name: Log in to ACR
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Get ACR login server
+        id: acr
+        run: |
+          SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          echo "server=${SERVER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push backend
+        run: |
+          docker build \
+            -t "${{ steps.acr.outputs.server }}/fedex-backend:${{ steps.meta.outputs.tag }}" \
+            -f docker/backend/Dockerfile .
+          docker push "${{ steps.acr.outputs.server }}/fedex-backend:${{ steps.meta.outputs.tag }}"
+
+      - name: Build & push frontend
+        run: |
+          docker build \
+            -t "${{ steps.acr.outputs.server }}/fedex-frontend:${{ steps.meta.outputs.tag }}" \
+            -f docker/frontend/Dockerfile .
+          docker push "${{ steps.acr.outputs.server }}/fedex-frontend:${{ steps.meta.outputs.tag }}"
+
+  # ── 3. Deploy to AKS ──────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER" \
+            --overwrite-existing
+
+      - name: Get ACR login server
+        id: acr
+        run: |
+          SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          echo "server=${SERVER}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply Kubernetes manifests
+        env:
+          TAG: ${{ needs.build.outputs.image_tag }}
+          ACR_SERVER: ${{ steps.acr.outputs.server }}
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/backend-service.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+          sed "s|image: IMAGE_PLACEHOLDER|image: ${ACR_SERVER}/fedex-backend:${TAG}|" \
+            k8s/backend-deployment.yaml | kubectl apply -f -
+
+          sed "s|image: IMAGE_PLACEHOLDER|image: ${ACR_SERVER}/fedex-frontend:${TAG}|" \
+            k8s/frontend-deployment.yaml | kubectl apply -f -
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend  -n "$NAMESPACE" --timeout=120s
+          kubectl rollout status deployment/frontend -n "$NAMESPACE" --timeout=120s
+
+      - name: Print deployment status
+        if: always()
+        run: |
+          echo "── Pods ──"
+          kubectl get pods -n "$NAMESPACE"
+          echo ""
+          echo "── Ingress ──"
+          kubectl get ingress -n "$NAMESPACE"
