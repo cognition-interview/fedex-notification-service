@@ -208,14 +208,14 @@ push to main
 
 ### Required GitHub Secrets
 
-All configuration is hardcoded in the workflow (`ACR_NAME: fedexcr`, `AKS_CLUSTER: fedex-k8-cluster`, `AZURE_RESOURCE_GROUP: fedex`). You only need to add these **secrets**:
+All configuration is hardcoded in the workflow (`ACR_NAME: fedexcr`, `AKS_CLUSTER: fedex-k8-cluster`, `AZURE_RESOURCE_GROUP: fedex`). You only need to configure:
 
 | Type | Name | Description |
 |------|------|-------------|
 | Secret | `AZURE_APP_ID` | Service principal app ID |
 | Secret | `AZURE_PASSWORD` | Service principal password |
 | Secret | `AZURE_TENANT_ID` | Azure AD tenant ID |
-| Secret | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+| Variable | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
 ---
 
