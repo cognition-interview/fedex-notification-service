@@ -16,6 +16,10 @@ node_modules/
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+
+# Azure Functions local settings (contains secrets)
+local.settings.json
 
 # Kubernetes secrets (never commit real values)
 k8s/secrets.yaml
