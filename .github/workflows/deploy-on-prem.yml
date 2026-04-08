@@ -72,6 +72,10 @@ jobs:
             # Random password — SSH is never used, only az run-command
             VM_PASSWORD="Deploy$(openssl rand -hex 12)Az1!"
 
+            echo "RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}"
+            echo "VM_NAME:        ${{ vars.AZURE_VM_NAME }}"
+            echo "VM_PASSWORD length: ${#VM_PASSWORD}"
+
             az vm create --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}" --image Ubuntu2204 --size Standard_B2s --admin-username azureuser --admin-password "$VM_PASSWORD" --authentication-type password --public-ip-sku Standard
 
             az vm open-port --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}" --port 80
