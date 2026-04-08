@@ -578,6 +578,70 @@ All services use in-memory caching via `Map` + `shareReplay(1)` for GET requests
 
 ## Infrastructure & Deployment
 
+### ARM Templates (Infrastructure as Code)
+
+Azure infrastructure is managed declaratively via ARM templates in the `infra/` directory.
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `infra/azuredeploy.json` | Main ARM template defining all Azure resources |
+| `infra/azuredeploy.parameters.json` | Production parameter values |
+| `scripts/deploy-infra.sh` | Wrapper script with validation and what-if support |
+| `scripts/provision-aks.sh` | **DEPRECATED** — legacy imperative CLI script (kept for reference) |
+
+**Resources defined in the template:**
+
+| Resource | Type | Default Name | Notes |
+|----------|------|-------------|-------|
+| Container Registry | `Microsoft.ContainerRegistry/registries` | `fedexcr` | Standard SKU, admin disabled |
+| AKS Cluster | `Microsoft.ContainerService/managedClusters` | `fedex-k8-cluster` | System-assigned managed identity, azure/cilium overlay networking |
+| AKS System Node Pool | (inline in AKS) | `agentpool` | System mode, Standard_A2_v2, autoscaling 1–1 |
+| AKS User Node Pool | `Microsoft.ContainerService/managedClusters/agentPools` | `userpool` | User mode, Standard_A2_v2, autoscaling 1–1 |
+| Communication Services | `Microsoft.Communication/communicationServices` | `fedex-communication` | Global location, US data residency |
+| AcrPull Role Assignment | `Microsoft.Authorization/roleAssignments` | — | Conditional; grants AKS identity pull access to ACR |
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `location` | Resource group location | Azure region for all resources |
+| `acrName` | `fedexcr` | Container registry name |
+| `acrSku` | `Standard` | ACR SKU (`Basic`, `Standard`, `Premium`) |
+| `aksClusterName` | `fedex-k8-cluster` | AKS cluster name |
+| `aksDnsPrefix` | `fedex-k8-cluster-dns` | DNS prefix (immutable after creation) |
+| `kubernetesVersion` | `1.33` | Kubernetes version |
+| `systemNodePoolVmSize` | `Standard_A2_v2` | System pool VM size |
+| `systemNodePoolMinCount` / `MaxCount` | `1` / `1` | System pool autoscaling range |
+| `userNodePoolVmSize` | `Standard_A2_v2` | User pool VM size |
+| `userNodePoolMinCount` / `MaxCount` | `1` / `1` | User pool autoscaling range |
+| `communicationServiceName` | `fedex-communication` | Communication Services resource name |
+| `communicationServiceDataLocation` | `unitedstates` | Data residency region |
+| `assignAcrPullRole` | `true` | Set to `false` if the deploying SP lacks `roleAssignments/write` |
+
+**Template outputs:** `acrLoginServer`, `aksClusterName`, `aksFqdn`, `communicationServiceName`, `communicationServiceHostname`
+
+**Usage:**
+
+```bash
+# Preview changes (dry run)
+./scripts/deploy-infra.sh --what-if
+
+# Deploy infrastructure
+./scripts/deploy-infra.sh
+
+# Deploy without role assignment (Contributor-only SP)
+# Edit azuredeploy.parameters.json to set assignAcrPullRole = false, then:
+./scripts/deploy-infra.sh
+```
+
+**Design notes:**
+- The user node pool is defined as a separate child resource (`managedClusters/agentPools`) rather than inline in `agentPoolProfiles`. This is required for idempotent ARM deployments against an existing AKS cluster — Azure rejects inline additions of agent pools on update.
+- The AcrPull role assignment is conditional (`assignAcrPullRole` parameter) because it requires `Microsoft.Authorization/roleAssignments/write` permission (User Access Administrator or Owner role). If the deploying service principal only has Contributor, set this to `false` and use `az aks update --attach-acr` instead.
+- All resources are deployed to the `fedex` resource group in `centralus`.
+- The template uses incremental deployment mode — existing resources not in the template are left untouched.
+
 ### Docker
 
 **Dockerfile** (backend only):
