@@ -32,89 +32,124 @@ jobs:
         with:
           creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
 
-      - name: Validate ARM template
+      - name: Validate all ARM templates
         run: |
+          echo "Validating acr.json..."
           az deployment group validate \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --template-file infra/azuredeploy.json \
-            --parameters @infra/azuredeploy.parameters.json \
+            --template-file infra/acr.json \
+            --output none
+          echo "Validating aks.json..."
+          az deployment group validate \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/aks.json \
             --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }} \
             --output none
-          echo "Template validation passed."
+          echo "Validating communication.json..."
+          az deployment group validate \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/communication.json \
+            --output none
+          echo "All templates valid."
 
       - name: Check which resources already exist
-        id: check_resources
+        id: check
         run: |
-          # Read resource names from the parameters file
           ACR_NAME=$(jq -r '.parameters.acrName.value' infra/azuredeploy.parameters.json)
           AKS_NAME=$(jq -r '.parameters.aksClusterName.value' infra/azuredeploy.parameters.json)
           COMM_NAME=$(jq -r '.parameters.communicationServiceName.value' infra/azuredeploy.parameters.json)
-          FUNC_NAME=$(jq -r '.parameters.functionAppName.value' infra/azuredeploy.parameters.json)
-          STORAGE_NAME=$(jq -r '.parameters.functionStorageAccountName.value' infra/azuredeploy.parameters.json)
 
-          MISSING=""
-
-          check_resource() {
-            local TYPE="$1" NAME="$2" LABEL="$3"
-            if az resource show --resource-group "$AZURE_RESOURCE_GROUP" \
-                 --resource-type "$TYPE" --name "$NAME" --output none 2>/dev/null; then
-              echo "  ✓ $LABEL ($NAME) exists"
-            else
-              echo "  ✗ $LABEL ($NAME) does NOT exist"
-              MISSING="${MISSING}${LABEL}, "
-            fi
+          check() {
+            az resource show --resource-group "$AZURE_RESOURCE_GROUP" \
+              --resource-type "$1" --name "$2" --output none 2>/dev/null
           }
 
-          echo "Checking resources in resource group '$AZURE_RESOURCE_GROUP'..."
-          check_resource "Microsoft.ContainerRegistry/registries" "$ACR_NAME" "Container Registry"
-          check_resource "Microsoft.ContainerService/managedClusters" "$AKS_NAME" "AKS Cluster"
-          check_resource "Microsoft.Communication/communicationServices" "$COMM_NAME" "Communication Services"
-          check_resource "Microsoft.Storage/storageAccounts" "$STORAGE_NAME" "Storage Account"
-          check_resource "Microsoft.Web/serverfarms" "${FUNC_NAME}-plan" "App Service Plan"
-          check_resource "Microsoft.Web/sites" "$FUNC_NAME" "Function App"
-
-          if [ -z "$MISSING" ]; then
-            echo ""
-            echo "All resources already exist. Nothing to deploy."
-            echo "needs_deploy=false" >> "$GITHUB_OUTPUT"
+          if check "Microsoft.ContainerRegistry/registries" "$ACR_NAME"; then
+            echo "  ✓ ACR ($ACR_NAME) exists"
+            echo "acr=exists" >> "$GITHUB_OUTPUT"
           else
-            echo ""
-            echo "Missing resources: ${MISSING%, }"
-            echo "Deployment required."
-            echo "needs_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "  ✗ ACR ($ACR_NAME) missing"
+            echo "acr=missing" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: What-if preview
+          if check "Microsoft.ContainerService/managedClusters" "$AKS_NAME"; then
+            echo "  ✓ AKS ($AKS_NAME) exists"
+            echo "aks=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ✗ AKS ($AKS_NAME) missing"
+            echo "aks=missing" >> "$GITHUB_OUTPUT"
+          fi
+
+          if check "Microsoft.Communication/communicationServices" "$COMM_NAME"; then
+            echo "  ✓ Communication Services ($COMM_NAME) exists"
+            echo "comm=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ✗ Communication Services ($COMM_NAME) missing"
+            echo "comm=missing" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: What-if preview (all templates)
         if: inputs.mode == 'what-if'
         run: |
+          echo "=== ACR ==="
           az deployment group what-if \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --template-file infra/azuredeploy.json \
-            --parameters @infra/azuredeploy.parameters.json \
+            --template-file infra/acr.json
+          echo ""
+          echo "=== AKS ==="
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/aks.json \
             --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }}
+          echo ""
+          echo "=== Communication Services ==="
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/communication.json
 
-      - name: Deploy ARM template
-        if: inputs.mode == 'deploy' && steps.check_resources.outputs.needs_deploy == 'true'
+      - name: Deploy ACR
+        if: inputs.mode == 'deploy' && steps.check.outputs.acr == 'missing'
         run: |
-          DEPLOYMENT_NAME="fedex-infra-$(date +%Y%m%d-%H%M%S)"
+          echo "▶ Deploying ACR..."
           az deployment group create \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$DEPLOYMENT_NAME" \
-            --template-file infra/azuredeploy.json \
-            --parameters @infra/azuredeploy.parameters.json \
+            --name "fedex-acr-$(date +%Y%m%d-%H%M%S)" \
+            --template-file infra/acr.json \
+            --output table
+
+      - name: Deploy AKS
+        if: inputs.mode == 'deploy' && steps.check.outputs.aks == 'missing'
+        run: |
+          echo "▶ Deploying AKS (this may take 10-15 minutes)..."
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "fedex-aks-$(date +%Y%m%d-%H%M%S)" \
+            --template-file infra/aks.json \
             --parameters assignAcrPullRole=${{ inputs.assignAcrPullRole }} \
             --output table
 
-          echo ""
-          echo "Deployment outputs:"
-          az deployment group show \
+      - name: Deploy Communication Services
+        if: inputs.mode == 'deploy' && steps.check.outputs.comm == 'missing'
+        run: |
+          echo "▶ Deploying Communication Services..."
+          az deployment group create \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$DEPLOYMENT_NAME" \
-            --query "properties.outputs" \
+            --name "fedex-comm-$(date +%Y%m%d-%H%M%S)" \
+            --template-file infra/communication.json \
             --output table
 
-      - name: Skip deploy (all resources exist)
-        if: inputs.mode == 'deploy' && steps.check_resources.outputs.needs_deploy == 'false'
+      - name: Deploy summary
+        if: inputs.mode == 'deploy'
         run: |
-          echo "All resources already exist — skipping deployment."
-          echo "To force a re-deploy, delete the resource first or use the Azure portal."
+          echo "═══════════════════════════════════════════════════════════════════"
+          if [[ "${{ steps.check.outputs.acr }}" == "exists" && \
+                "${{ steps.check.outputs.aks }}" == "exists" && \
+                "${{ steps.check.outputs.comm }}" == "exists" ]]; then
+            echo "  All resources already exist — nothing was deployed."
+          else
+            echo "  Deployment complete. Deployed:"
+            [[ "${{ steps.check.outputs.acr }}" == "missing" ]] && echo "    - ACR"
+            [[ "${{ steps.check.outputs.aks }}" == "missing" ]] && echo "    - AKS"
+            [[ "${{ steps.check.outputs.comm }}" == "missing" ]] && echo "    - Communication Services"
+          fi
+          echo "═══════════════════════════════════════════════════════════════════"

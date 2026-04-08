@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Azure Communication Services for FedEx Notification Service."
+  },
+  "parameters": {
+    "communicationServiceName": {
+      "type": "string",
+      "defaultValue": "fedex-communication",
+      "metadata": {
+        "description": "Name of the Azure Communication Services resource."
+      }
+    },
+    "communicationServiceDataLocation": {
+      "type": "string",
+      "defaultValue": "unitedstates",
+      "allowedValues": [
+        "unitedstates",
+        "europe",
+        "uk",
+        "australia",
+        "japan",
+        "france",
+        "germany",
+        "brazil",
+        "korea",
+        "canada"
+      ],
+      "metadata": {
+        "description": "Data residency location for Azure Communication Services."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Communication/communicationServices",
+      "apiVersion": "2023-04-01",
+      "name": "[parameters('communicationServiceName')]",
+      "location": "global",
+      "properties": {
+        "dataLocation": "[parameters('communicationServiceDataLocation')]"
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    }
+  ],
+  "outputs": {
+    "communicationServiceName": {
+      "type": "string",
+      "value": "[parameters('communicationServiceName')]"
+    },
+    "communicationServiceHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))).hostName]"
+    }
+  }
+}
