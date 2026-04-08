@@ -733,6 +733,88 @@ Follow the same pattern — read name from parameters, check existence with `res
 - The reference template (`azuredeploy.json`) is kept in sync with all split templates. It can be used for greenfield deployments where everything needs to be created at once, but day-to-day deployments should use the split templates via the workflow/script.
 - If a canceled workflow run leaves an in-progress AKS operation, subsequent deployments will fail validation. Abort the stuck operation with `az aks operation-abort --resource-group fedex --name fedex-k8-cluster` and retry.
 
+### Passing Secrets to ARM Templates
+
+**Policy: Never hardcode secrets in ARM templates or parameter files.** Use `secureString` parameters and pass values at deploy time.
+
+When an Azure resource needs secret configuration (e.g., a Function App that needs a database connection string), follow this pattern:
+
+**1. Define `secureString` parameters in the ARM template:**
+
+```json
+{
+  "parameters": {
+    "postgresConnectionString": {
+      "type": "secureString",
+      "metadata": {
+        "description": "PostgreSQL connection URL. Passed at deploy time — never committed to source."
+      }
+    },
+    "azureEmailConnectionString": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Azure Communication Services connection string."
+      }
+    }
+  }
+}
+```
+
+**2. Reference the parameters in the resource's app settings:**
+
+```json
+{
+  "type": "Microsoft.Web/sites",
+  "properties": {
+    "siteConfig": {
+      "appSettings": [
+        { "name": "POSTGRES_CONNECTION_STRING", "value": "[parameters('postgresConnectionString')]" },
+        { "name": "AZURE_EMAIL_CONNECTION_STRING", "value": "[parameters('azureEmailConnectionString')]" }
+      ]
+    }
+  }
+}
+```
+
+**3. Pass values at deploy time** (never in parameter files):
+
+In the deploy script (`scripts/deploy-infra.sh`):
+```bash
+az deployment group create \
+  --resource-group fedex \
+  --template-file infra/function-app.json \
+  --parameters @infra/azuredeploy.parameters.json \
+  --parameters postgresConnectionString="$POSTGRES_CONNECTION_STRING" \
+               azureEmailConnectionString="$AZURE_EMAIL_CONNECTION_STRING"
+```
+
+In the workflow (`.github/workflows/deploy-infra.yml`), pass values from GitHub Secrets:
+```yaml
+- name: Deploy Function App
+  run: |
+    az deployment group create \
+      --resource-group fedex \
+      --template-file infra/function-app.json \
+      --parameters @infra/azuredeploy.parameters.json \
+      --parameters postgresConnectionString="${{ secrets.POSTGRES_CONNECTION_STRING }}" \
+                   azureEmailConnectionString="${{ secrets.AZURE_EMAIL_CONNECTION_STRING }}"
+```
+
+**Key rules:**
+- `secureString` parameters must NOT have `defaultValue` — they are required at deploy time.
+- Never add secret values to `azuredeploy.parameters.json` — that file is committed to source control.
+- The deploy script should read secrets from environment variables (sourced from K8s secrets, `.env`, or CI secrets).
+- Non-secret app settings (e.g., `FUNCTIONS_WORKER_RUNTIME`, `FUNCTION_APP_URL`) can use regular `string` parameters with defaults in the parameter file.
+
+### Deterministic Azure URLs
+
+When an Azure resource has a predictable URL based on its name (e.g., `https://{name}.azurewebsites.net` for Function Apps, `https://{name}.azurecr.io` for Container Registries), configure downstream consumers **immediately when the resource name is decided** — do not wait for deployment.
+
+For example, when adding a Function App named `fedex-update-status`:
+- The URL `https://fedex-update-status.azurewebsites.net` is known at design time
+- Add `FUNCTION_APP_URL` to the K8s `backend-secrets`, `secrets.yaml.example`, `.envrc.example`, and test bootstrap **in the same PR that introduces the resource**
+- Do not defer this to a later phase or leave it as a manual post-deploy step
+
 ### GitHub Actions Workflow
 
 The `Deploy Infrastructure` workflow (`.github/workflows/deploy-infra.yml`) provides a manual trigger to deploy ARM templates:
