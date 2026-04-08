@@ -30,13 +30,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Login to Azure ────────────────────────────────────────────────
+      # ── 1. Debug: print lengths of all secrets/vars (never prints values) ─
+      - name: Debug secret lengths
+        run: |
+          echo "AZURE_APP_ID                  length: ${#APP_ID}"
+          echo "AZURE_PASSWORD                length: ${#PASSWORD}"
+          echo "AZURE_TENANT_ID               length: ${#TENANT_ID}"
+          echo "AZURE_SUBSCRIPTION_ID         length: ${#SUB_ID}"
+          echo "AZURE_EMAIL_CONNECTION_STRING length: ${#EMAIL_CS}"
+          echo "AZURE_EMAIL_FROM_ADDRESS      length: ${#EMAIL_FROM}"
+          echo "POSTGRES_CONNECTION_STRING    length: ${#PG_CS}"
+        env:
+          APP_ID:     ${{ secrets.AZURE_APP_ID }}
+          PASSWORD:   ${{ secrets.AZURE_PASSWORD }}
+          TENANT_ID:  ${{ secrets.AZURE_TENANT_ID }}
+          SUB_ID:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          EMAIL_CS:   ${{ secrets.AZURE_EMAIL_CONNECTION_STRING }}
+          EMAIL_FROM: ${{ secrets.AZURE_EMAIL_FROM_ADDRESS }}
+          PG_CS:      ${{ secrets.POSTGRES_CONNECTION_STRING }}
+
+      # ── 2. Login to Azure ────────────────────────────────────────────────
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: '{"clientId":"${{ secrets.AZURE_APP_ID }}","clientSecret":"${{ secrets.AZURE_PASSWORD }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ vars.AZURE_SUBSCRIPTION_ID }}"}'
+          auth-type: SERVICE_PRINCIPAL
 
-      # ── 2. Base64-encode the .env so special characters survive transfer ─
+      # ── 3. Base64-encode the .env so special characters survive transfer ─
       #       (Azure connection strings commonly contain = ; @ : which would
       #        break naive shell interpolation)
       - name: Encode .env payload
