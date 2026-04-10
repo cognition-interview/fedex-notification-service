@@ -13,7 +13,9 @@ module.exports = function (config) {
       require('@angular-devkit/build-angular/plugins/karma')
     ],
     client: {
-      jasmine: {},
+      jasmine: {
+        random: false,
+      },
       clearContext: false
     },
     jasmineHtmlReporter: {

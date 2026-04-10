@@ -2,9 +2,6 @@ import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { InsightsService } from '../services/insights.service';
 import { DeliveryInsights } from '../models/insight.model';
 import { ChartData, ChartOptions } from 'chart.js';
-import { Chart, registerables } from 'chart.js';
-
-Chart.register(...registerables);
 
 @Component({
   selector: 'app-insights',

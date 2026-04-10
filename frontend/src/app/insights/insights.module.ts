@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Routes } from '@angular/router';
-import { NgChartsModule } from 'ng2-charts';
+import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { InsightsComponent } from './insights.component';
 
 const routes: Routes = [
@@ -12,8 +12,11 @@ const routes: Routes = [
   declarations: [InsightsComponent],
   imports: [
     CommonModule,
-    NgChartsModule,
+    BaseChartDirective,
     RouterModule.forChild(routes),
+  ],
+  providers: [
+    provideCharts(withDefaultRegisterables()),
   ]
 })
 export class InsightsModule {}
