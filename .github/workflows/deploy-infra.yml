@@ -50,6 +50,11 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/communication.json \
             --output none
+          echo "Validating function-app.json..."
+          az deployment group validate \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/function-app.json \
+            --output none
           echo "All templates valid."
 
       - name: Check which resources already exist
@@ -58,6 +63,8 @@ jobs:
           ACR_NAME=$(jq -r '.parameters.acrName.value' infra/azuredeploy.parameters.json)
           AKS_NAME=$(jq -r '.parameters.aksClusterName.value' infra/azuredeploy.parameters.json)
           COMM_NAME=$(jq -r '.parameters.communicationServiceName.value' infra/azuredeploy.parameters.json)
+          FUNC_NAME=$(jq -r '.parameters.functionAppName.value' infra/azuredeploy.parameters.json)
+          FUNC_SA_NAME=$(jq -r '.parameters.functionStorageAccountName.value' infra/azuredeploy.parameters.json)
 
           check() {
             az resource show --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -88,6 +95,14 @@ jobs:
             echo "comm=missing" >> "$GITHUB_OUTPUT"
           fi
 
+          if check "Microsoft.Web/sites" "$FUNC_NAME"; then
+            echo "  ✓ Function App ($FUNC_NAME) exists"
+            echo "funcapp=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ✗ Function App ($FUNC_NAME) missing"
+            echo "funcapp=missing" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: What-if preview (all templates)
         if: inputs.mode == 'what-if'
         run: |
@@ -106,6 +121,11 @@ jobs:
           az deployment group what-if \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/communication.json
+          echo ""
+          echo "=== Function App ==="
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/function-app.json
 
       - name: Deploy ACR
         if: inputs.mode == 'deploy' && steps.check.outputs.acr == 'missing'
@@ -138,18 +158,34 @@ jobs:
             --template-file infra/communication.json \
             --output table
 
+      - name: Deploy Function App
+        if: inputs.mode == 'deploy' && steps.check.outputs.funcapp == 'missing'
+        run: |
+          echo "▶ Deploying Function App..."
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "fedex-funcapp-$(date +%Y%m%d-%H%M%S)" \
+            --template-file infra/function-app.json \
+            --parameters \
+              postgresConnectionString="${{ secrets.POSTGRES_CONNECTION_STRING }}" \
+              azureEmailConnectionString="${{ secrets.AZURE_EMAIL_CONNECTION_STRING }}" \
+              azureEmailFromAddress="${{ secrets.AZURE_EMAIL_FROM_ADDRESS }}" \
+            --output table
+
       - name: Deploy summary
         if: inputs.mode == 'deploy'
         run: |
           echo "═══════════════════════════════════════════════════════════════════"
           if [[ "${{ steps.check.outputs.acr }}" == "exists" && \
                 "${{ steps.check.outputs.aks }}" == "exists" && \
-                "${{ steps.check.outputs.comm }}" == "exists" ]]; then
+                "${{ steps.check.outputs.comm }}" == "exists" && \
+                "${{ steps.check.outputs.funcapp }}" == "exists" ]]; then
             echo "  All resources already exist — nothing was deployed."
           else
             echo "  Deployment complete. Deployed:"
             [[ "${{ steps.check.outputs.acr }}" == "missing" ]] && echo "    - ACR"
             [[ "${{ steps.check.outputs.aks }}" == "missing" ]] && echo "    - AKS"
             [[ "${{ steps.check.outputs.comm }}" == "missing" ]] && echo "    - Communication Services"
+            [[ "${{ steps.check.outputs.funcapp }}" == "missing" ]] && echo "    - Function App"
           fi
           echo "═══════════════════════════════════════════════════════════════════"
