@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "POSTGRES_CONNECTION_STRING": "postgresql://user:pass@localhost:5432/fedex_notifications",
+    "AZURE_EMAIL_CONNECTION_STRING": "endpoint=https://your-resource.communication.azure.com/;accesskey=your-access-key",
+    "AZURE_EMAIL_FROM_ADDRESS": "DoNotReply@your-domain.azurecomm.net"
+  }
+}

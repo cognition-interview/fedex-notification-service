@@ -15,6 +15,11 @@ node_modules/
 # Kubernetes secrets (never commit real values)
 k8s/secrets.yaml
 
+# Azure Functions local settings (contains secrets)
+functions/*/local.settings.json
+__pycache__/
+.python_packages/
+
 # OS
 .DS_Store
 Thumbs.db

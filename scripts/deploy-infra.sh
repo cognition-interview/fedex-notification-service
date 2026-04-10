@@ -29,13 +29,15 @@ echo "  FedEx Notification Service — ARM Template Deployment"
 echo "═══════════════════════════════════════════════════════════════════"
 echo ""
 echo "  Resource Group : ${RESOURCE_GROUP}"
-echo "  Templates      : infra/acr.json, infra/aks.json, infra/communication.json"
+echo "  Templates      : infra/acr.json, infra/aks.json, infra/communication.json, infra/function-app.json"
 echo ""
 
 # ── Read resource names from parameters ──────────────────────────────────────
 ACR_NAME=$(jq -r '.parameters.acrName.value' "${PARAMETERS_FILE}")
 AKS_NAME=$(jq -r '.parameters.aksClusterName.value' "${PARAMETERS_FILE}")
 COMM_NAME=$(jq -r '.parameters.communicationServiceName.value' "${PARAMETERS_FILE}")
+FUNC_NAME=$(jq -r '.parameters.functionAppName.value' "${PARAMETERS_FILE}")
+FUNC_SA_NAME=$(jq -r '.parameters.functionStorageAccountName.value' "${PARAMETERS_FILE}")
 
 # ── Validate all templates ───────────────────────────────────────────────────
 echo "▶ Validating ARM templates..."
@@ -52,6 +54,10 @@ az deployment group validate \
   --resource-group "${RESOURCE_GROUP}" \
   --template-file "${REPO_ROOT}/infra/communication.json" \
   --output none
+az deployment group validate \
+  --resource-group "${RESOURCE_GROUP}" \
+  --template-file "${REPO_ROOT}/infra/function-app.json" \
+  --output none
 echo "  All templates valid."
 echo ""
 
@@ -65,6 +71,7 @@ echo "▶ Checking which resources already exist..."
 ACR_EXISTS=false
 AKS_EXISTS=false
 COMM_EXISTS=false
+FUNC_EXISTS=false
 
 if resource_exists "Microsoft.ContainerRegistry/registries" "${ACR_NAME}"; then
   echo "  ✓ ACR (${ACR_NAME}) exists"
@@ -85,6 +92,13 @@ if resource_exists "Microsoft.Communication/communicationServices" "${COMM_NAME}
   COMM_EXISTS=true
 else
   echo "  ✗ Communication Services (${COMM_NAME}) missing"
+fi
+
+if resource_exists "Microsoft.Web/sites" "${FUNC_NAME}"; then
+  echo "  ✓ Function App (${FUNC_NAME}) exists"
+  FUNC_EXISTS=true
+else
+  echo "  ✗ Function App (${FUNC_NAME}) missing"
 fi
 echo ""
 
@@ -107,6 +121,11 @@ if [[ "${1:-}" == "--what-if" ]]; then
   az deployment group what-if \
     --resource-group "${RESOURCE_GROUP}" \
     --template-file "${REPO_ROOT}/infra/communication.json"
+  echo ""
+  echo "=== Function App ==="
+  az deployment group what-if \
+    --resource-group "${RESOURCE_GROUP}" \
+    --template-file "${REPO_ROOT}/infra/function-app.json"
 else
   FORCE=false
   [[ "${1:-}" == "--force" ]] && FORCE=true
@@ -141,6 +160,21 @@ else
       --resource-group "${RESOURCE_GROUP}" \
       --name "fedex-comm-$(date +%Y%m%d-%H%M%S)" \
       --template-file "${REPO_ROOT}/infra/communication.json" \
+      --output table
+    echo ""
+    DEPLOYED=$((DEPLOYED + 1))
+  fi
+
+  if [[ "${FUNC_EXISTS}" == "false" ]] || [[ "${FORCE}" == "true" ]]; then
+    echo "▶ Deploying Function App..."
+    az deployment group create \
+      --resource-group "${RESOURCE_GROUP}" \
+      --name "fedex-func-$(date +%Y%m%d-%H%M%S)" \
+      --template-file "${REPO_ROOT}/infra/function-app.json" \
+      --parameters \
+        postgresConnectionString="${POSTGRES_CONNECTION_STRING:-}" \
+        azureEmailConnectionString="${AZURE_EMAIL_CONNECTION_STRING:-}" \
+        azureEmailFromAddress="${AZURE_EMAIL_FROM_ADDRESS:-}" \
       --output table
     echo ""
     DEPLOYED=$((DEPLOYED + 1))

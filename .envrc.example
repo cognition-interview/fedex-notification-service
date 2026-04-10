@@ -14,3 +14,6 @@ export AZURE_EMAIL_FROM_ADDRESS="DoNotReply@your-domain.azurecomm.net"
 export AZURE_APP_ID="00000000-0000-0000-0000-000000000000"
 export AZURE_PASSWORD="your-service-principal-password"
 export AZURE_TENANT_ID="00000000-0000-0000-0000-000000000000"
+
+# Azure Function App (Update Order Status)
+export FUNCTION_APP_URL="https://fedex-update-status.azurewebsites.net"

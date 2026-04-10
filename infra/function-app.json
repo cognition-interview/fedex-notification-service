@@ -1,0 +1,162 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "ARM template for the FedEx Update Status Azure Function App, including a Storage Account and Consumption (Serverless) App Service Plan."
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "functionAppName": {
+      "type": "string",
+      "defaultValue": "fedex-update-status",
+      "metadata": {
+        "description": "Name of the Function App."
+      }
+    },
+    "functionStorageAccountName": {
+      "type": "string",
+      "defaultValue": "fedexfuncsa",
+      "metadata": {
+        "description": "Name of the Storage Account used by the Function App."
+      }
+    },
+    "postgresConnectionString": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname). Passed at deploy time."
+      }
+    },
+    "azureEmailConnectionString": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Communication Services connection string. Passed at deploy time."
+      }
+    },
+    "azureEmailFromAddress": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Sender email address for notifications."
+      }
+    }
+  },
+  "variables": {
+    "appServicePlanName": "[concat(parameters('functionAppName'), '-plan')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('functionStorageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic"
+      },
+      "kind": "functionapp,linux",
+      "properties": {
+        "reserved": true
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('functionAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp,linux",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('functionStorageAccountName'))]",
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+      ],
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "reserved": true,
+        "siteConfig": {
+          "linuxFxVersion": "Python|3.12",
+          "appSettings": [
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "python"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('functionStorageAccountName'), ';EndpointSuffix=core.windows.net;AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionStorageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('functionStorageAccountName'), ';EndpointSuffix=core.windows.net;AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionStorageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTSHARE",
+              "value": "[parameters('functionAppName')]"
+            },
+            {
+              "name": "POSTGRES_CONNECTION_STRING",
+              "value": "[parameters('postgresConnectionString')]"
+            },
+            {
+              "name": "AZURE_EMAIL_CONNECTION_STRING",
+              "value": "[parameters('azureEmailConnectionString')]"
+            },
+            {
+              "name": "AZURE_EMAIL_FROM_ADDRESS",
+              "value": "[parameters('azureEmailFromAddress')]"
+            }
+          ]
+        }
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    }
+  ],
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[parameters('functionAppName')]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "value": "[concat('https://', parameters('functionAppName'), '.azurewebsites.net')]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[parameters('functionStorageAccountName')]"
+    }
+  }
+}
