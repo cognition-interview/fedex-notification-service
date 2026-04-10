@@ -1,6 +1,4 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { OrderService } from '../services/order.service';
 import { Order, OrderStatus } from '../models/order.model';
 
@@ -15,10 +13,8 @@ const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 @Component({
   selector: 'app-update-status',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
   templateUrl: './update-status.component.html',
-  styleUrl: './update-status.component.scss',
+  styleUrls: ['./update-status.component.scss'],
 })
 export class UpdateStatusComponent {
   trackingInput = '';

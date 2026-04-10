@@ -1,15 +1,12 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { BusinessService } from '../services/business.service';
 import { Business } from '../models/business.model';
 
 @Component({
   selector: 'app-businesses',
-  standalone: true,
-  imports: [CommonModule],
   templateUrl: './businesses.component.html',
-  styleUrl: './businesses.component.scss',
+  styleUrls: ['./businesses.component.scss'],
 })
 export class BusinessesComponent implements OnInit {
   businesses: Business[] = [];

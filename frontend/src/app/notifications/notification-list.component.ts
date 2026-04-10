@@ -1,5 +1,4 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { NotificationService } from '../services/notification.service';
 import { BusinessService } from '../services/business.service';
@@ -9,10 +8,8 @@ type FilterTab = 'all' | 'unread' | 'read';
 
 @Component({
   selector: 'app-notification-list',
-  standalone: true,
-  imports: [CommonModule],
   templateUrl: './notification-list.component.html',
-  styleUrl: './notification-list.component.scss',
+  styleUrls: ['./notification-list.component.scss'],
 })
 export class NotificationListComponent implements OnInit {
   notifications: Notification[] = [];

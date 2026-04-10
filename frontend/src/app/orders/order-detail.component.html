@@ -4,11 +4,9 @@
   <span>{{ order?.tracking_number ?? 'Loading...' }}</span>
 </div>
 
-@if (loading) {
-  <div class="no-data">Loading order...</div>
-} @else if (notFound) {
-  <div class="no-data">Order not found.</div>
-} @else if (order) {
+<div *ngIf="loading" class="no-data">Loading order...</div>
+<div *ngIf="!loading && notFound" class="no-data">Order not found.</div>
+<ng-container *ngIf="!loading && !notFound && order">
 
   <!-- Header card -->
   <div class="card header-card">
@@ -54,7 +52,7 @@
           <span class="dl">Last Updated</span>
           <span class="dv">{{ formatDateTime(order.updated_at) }}</span>
         </div>
-        @if (business) {
+        <ng-container *ngIf="business">
           <div class="detail-row">
             <span class="dl">Business</span>
             <span class="dv">{{ business.name }}</span>
@@ -63,29 +61,22 @@
             <span class="dl">Account #</span>
             <span class="dv monospace">{{ business.account_number }}</span>
           </div>
-        }
+        </ng-container>
       </div>
     </div>
 
     <!-- Timeline -->
     <div class="card">
       <h3>Shipment Timeline</h3>
-      @if (sortedEvents.length === 0) {
-        <div class="no-data" style="padding: 20px 0">No events recorded.</div>
-      } @else {
-        <div class="timeline">
-          @for (event of sortedEvents; track event.id; let i = $index) {
-            <div class="timeline-item" [class.latest]="i === 0">
-              <div class="tl-time">{{ formatDateTime(event.occurred_at) }}</div>
-              <div class="tl-event">{{ event.event_type }}</div>
-              <div class="tl-loc">{{ event.location }}</div>
-              @if (event.description) {
-                <div class="tl-desc">{{ event.description }}</div>
-              }
-            </div>
-          }
+      <div *ngIf="sortedEvents.length === 0" class="no-data" style="padding: 20px 0">No events recorded.</div>
+      <div *ngIf="sortedEvents.length > 0" class="timeline">
+        <div *ngFor="let event of sortedEvents; let i = index" class="timeline-item" [class.latest]="i === 0">
+          <div class="tl-time">{{ formatDateTime(event.occurred_at) }}</div>
+          <div class="tl-event">{{ event.event_type }}</div>
+          <div class="tl-loc">{{ event.location }}</div>
+          <div *ngIf="event.description" class="tl-desc">{{ event.description }}</div>
         </div>
-      }
+      </div>
     </div>
   </div>
-}
+</ng-container>

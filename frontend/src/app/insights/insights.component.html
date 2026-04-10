@@ -3,9 +3,8 @@
   <p>Delivery performance analytics</p>
 </div>
 
-@if (loading) {
-  <div class="no-data">Loading insights...</div>
-} @else if (insights) {
+<div *ngIf="loading" class="no-data">Loading insights...</div>
+<ng-container *ngIf="!loading && insights">
 
   <div class="insights-top">
     <!-- On-time % -->
@@ -15,9 +14,9 @@
         {{ insights.on_time_percentage }}%
       </div>
       <div class="ontime-label">
-        @if (insights.on_time_percentage >= 90) { Excellent performance }
-        @else if (insights.on_time_percentage >= 70) { Acceptable — room to improve }
-        @else { Below target — action required }
+        <ng-container *ngIf="insights.on_time_percentage >= 90">Excellent performance</ng-container>
+        <ng-container *ngIf="insights.on_time_percentage >= 70 && insights.on_time_percentage < 90">Acceptable — room to improve</ng-container>
+        <ng-container *ngIf="insights.on_time_percentage < 70">Below target — action required</ng-container>
       </div>
     </div>
 
@@ -67,15 +66,13 @@
         </tr>
       </thead>
       <tbody>
-        @for (route of insights.top_routes; track route.origin + route.destination; let i = $index) {
-          <tr>
-            <td>{{ i + 1 }}</td>
-            <td>{{ route.origin }}</td>
-            <td>{{ route.destination }}</td>
-            <td><strong>{{ route.count }}</strong></td>
-          </tr>
-        }
+        <tr *ngFor="let route of insights.top_routes; let i = index">
+          <td>{{ i + 1 }}</td>
+          <td>{{ route.origin }}</td>
+          <td>{{ route.destination }}</td>
+          <td><strong>{{ route.count }}</strong></td>
+        </tr>
       </tbody>
     </table>
   </div>
-}
+</ng-container>

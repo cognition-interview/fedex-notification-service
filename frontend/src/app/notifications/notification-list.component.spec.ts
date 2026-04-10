@@ -1,7 +1,8 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { RouterTestingModule } from '@angular/router/testing';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { of } from 'rxjs';
-import { vi } from 'vitest';
 import { NotificationListComponent } from './notification-list.component';
 import { NotificationService } from '../services/notification.service';
 import { BusinessService } from '../services/business.service';
@@ -10,11 +11,11 @@ describe('NotificationListComponent', () => {
   let fixture: ComponentFixture<NotificationListComponent>;
   let component: NotificationListComponent;
   let mockNotifService: {
-    getNotifications: ReturnType<typeof vi.fn>;
-    markAsRead: ReturnType<typeof vi.fn>;
-    markAllAsRead: ReturnType<typeof vi.fn>;
+    getNotifications: jasmine.Spy;
+    markAsRead: jasmine.Spy;
+    markAllAsRead: jasmine.Spy;
   };
-  let mockBusinessService: { getSelectedBusinessId: ReturnType<typeof vi.fn> };
+  let mockBusinessService: { getSelectedBusinessId: jasmine.Spy };
 
   const mockNotifications = [
     { id: 'notif-001', order_id: 'ord-001', business_id: 'biz-001', type: 'delivery',
@@ -27,23 +28,23 @@ describe('NotificationListComponent', () => {
 
   beforeEach(async () => {
     mockNotifService = {
-      getNotifications: vi.fn(),
-      markAsRead: vi.fn(),
-      markAllAsRead: vi.fn(),
+      getNotifications: jasmine.createSpy('getNotifications'),
+      markAsRead: jasmine.createSpy('markAsRead'),
+      markAllAsRead: jasmine.createSpy('markAllAsRead'),
     };
     mockBusinessService = {
-      getSelectedBusinessId: vi.fn(),
+      getSelectedBusinessId: jasmine.createSpy('getSelectedBusinessId'),
     };
 
-    mockBusinessService.getSelectedBusinessId.mockReturnValue(of(''));
-    mockNotifService.getNotifications.mockReturnValue(of({ notifications: mockNotifications, total: 3 }));
-    mockNotifService.markAsRead.mockReturnValue(of(undefined));
-    mockNotifService.markAllAsRead.mockReturnValue(of(undefined));
+    mockBusinessService.getSelectedBusinessId.and.returnValue(of(''));
+    mockNotifService.getNotifications.and.returnValue(of({ notifications: mockNotifications, total: 3 }));
+    mockNotifService.markAsRead.and.returnValue(of(undefined));
+    mockNotifService.markAllAsRead.and.returnValue(of(undefined));
 
     await TestBed.configureTestingModule({
-      imports: [NotificationListComponent],
+      imports: [RouterTestingModule, CommonModule],
+      declarations: [NotificationListComponent],
       providers: [
-        provideRouter([]),
         { provide: NotificationService, useValue: mockNotifService },
         { provide: BusinessService, useValue: mockBusinessService },
       ],
@@ -76,20 +77,20 @@ describe('NotificationListComponent', () => {
   });
 
   it('should filter to unread on setTab("unread")', () => {
-    mockNotifService.getNotifications.mockReturnValue(of({ notifications: [mockNotifications[0]], total: 1 }));
+    mockNotifService.getNotifications.and.returnValue(of({ notifications: [mockNotifications[0]], total: 1 }));
     component.setTab('unread');
     expect(component.activeTab).toBe('unread');
     expect(mockNotifService.getNotifications).toHaveBeenCalledWith(
-      expect.objectContaining({ read: false })
+      jasmine.objectContaining({ read: false })
     );
   });
 
   it('should filter to read on setTab("read")', () => {
-    mockNotifService.getNotifications.mockReturnValue(of({ notifications: [mockNotifications[1]], total: 1 }));
+    mockNotifService.getNotifications.and.returnValue(of({ notifications: [mockNotifications[1]], total: 1 }));
     component.setTab('read');
     expect(component.activeTab).toBe('read');
     expect(mockNotifService.getNotifications).toHaveBeenCalledWith(
-      expect.objectContaining({ read: true })
+      jasmine.objectContaining({ read: true })
     );
   });
 
@@ -101,18 +102,18 @@ describe('NotificationListComponent', () => {
 
   it('should call markAsRead and navigate on markAsRead()', () => {
     const router = TestBed.inject(Router);
-    vi.spyOn(router, 'navigate');
+    spyOn(router, 'navigate');
     const unread = mockNotifications[0];
-    component.markAsRead(unread);
+    component.markAsRead(unread as any);
     expect(mockNotifService.markAsRead).toHaveBeenCalledWith('notif-001');
     expect(router.navigate).toHaveBeenCalledWith(['/orders', 'ord-001']);
   });
 
   it('should not call markAsRead for already-read notifications', () => {
     const router = TestBed.inject(Router);
-    vi.spyOn(router, 'navigate');
+    spyOn(router, 'navigate');
     const read = mockNotifications[1];
-    component.markAsRead(read);
+    component.markAsRead(read as any);
     expect(mockNotifService.markAsRead).not.toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalled();
   });
@@ -133,7 +134,7 @@ describe('NotificationListComponent', () => {
   });
 
   it('should return "just now" for very recent dates', () => {
-    const nowish = new Date(Date.now() - 30000).toISOString(); // 30 seconds ago
+    const nowish = new Date(Date.now() - 30000).toISOString();
     expect(component.formatRelative(nowish)).toBe('just now');
   });
 

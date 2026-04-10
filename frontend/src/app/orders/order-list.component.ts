@@ -1,17 +1,13 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterLink, ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
 import { Order, OrderStatus, ServiceType } from '../models/order.model';
 
 @Component({
   selector: 'app-order-list',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-list.component.html',
-  styleUrl: './order-list.component.scss',
+  styleUrls: ['./order-list.component.scss'],
 })
 export class OrderListComponent implements OnInit {
   orders: Order[] = [];
@@ -45,13 +41,11 @@ export class OrderListComponent implements OnInit {
 
   ngOnInit(): void {
     console.log('[OrderListComponent] ngOnInit');
-    // Read businessId from query params (e.g. when navigated from Businesses page)
     const qp = this.route.snapshot.queryParamMap;
     const qpBizId = qp.get('businessId');
     console.log('[OrderListComponent] query params read', { businessId: qpBizId, at: new Date().toISOString() });
     if (qpBizId) {
       this.businessService.setSelectedBusinessId(qpBizId);
-      // Clear query param from URL without reload
       this.router.navigate([], { queryParams: {}, replaceUrl: true });
     }
 

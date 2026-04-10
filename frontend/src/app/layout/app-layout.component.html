@@ -31,45 +31,35 @@
           <label>Business:</label>
           <select [ngModel]="selectedBusinessId" (ngModelChange)="onBusinessChange($event)">
             <option value="">All Businesses</option>
-            @for (b of businesses; track b.id) {
-              <option [value]="b.id">{{ b.name }}</option>
-            }
+            <option *ngFor="let b of businesses" [value]="b.id">{{ b.name }}</option>
           </select>
         </div>
         <div class="bell-wrap">
           <button class="bell-btn" (click)="toggleBell()">
             🔔
-            @if (unreadCount > 0) {
-              <span class="bell-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
-            }
+            <span *ngIf="unreadCount > 0" class="bell-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
           </button>
-          @if (bellOpen) {
-            <div class="bell-dropdown">
-              <div class="bell-header">Recent Notifications</div>
-              @if (recentNotifications.length === 0) {
-                <div class="bell-empty">No unread notifications</div>
-              }
-              @for (n of recentNotifications; track n.id) {
-                <div class="bell-item" (click)="goToOrder(n.order_id)">
-                  <span class="bell-icon">{{ notifIcon(n.type) }}</span>
-                  <div class="bell-msg">
-                    <div class="bell-text">{{ n.message }}</div>
-                    <div class="bell-time">{{ formatRelative(n.created_at) }}</div>
-                  </div>
-                </div>
-              }
-              <div class="bell-footer">
-                <a routerLink="/notifications" (click)="closeBell()">View all notifications →</a>
+          <div *ngIf="bellOpen" class="bell-dropdown">
+            <div class="bell-header">Recent Notifications</div>
+            <div *ngIf="recentNotifications.length === 0" class="bell-empty">No unread notifications</div>
+            <div *ngFor="let n of recentNotifications" class="bell-item" (click)="goToOrder(n.order_id)">
+              <span class="bell-icon">{{ notifIcon(n.type) }}</span>
+              <div class="bell-msg">
+                <div class="bell-text">{{ n.message }}</div>
+                <div class="bell-time">{{ formatRelative(n.created_at) }}</div>
               </div>
             </div>
-          }
+            <div class="bell-footer">
+              <a routerLink="/notifications" (click)="closeBell()">View all notifications →</a>
+            </div>
+          </div>
         </div>
       </div>
     </header>
 
     <!-- Content -->
     <main class="content">
-      <router-outlet />
+      <router-outlet></router-outlet>
     </main>
   </div>
 </div>

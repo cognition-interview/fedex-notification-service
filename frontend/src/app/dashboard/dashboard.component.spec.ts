@@ -1,7 +1,7 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { RouterTestingModule } from '@angular/router/testing';
+import { CommonModule } from '@angular/common';
 import { of } from 'rxjs';
-import { vi } from 'vitest';
 import { DashboardComponent } from './dashboard.component';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
@@ -9,8 +9,8 @@ import { BusinessService } from '../services/business.service';
 describe('DashboardComponent', () => {
   let fixture: ComponentFixture<DashboardComponent>;
   let component: DashboardComponent;
-  let mockOrderService: { getOrders: ReturnType<typeof vi.fn>; getOrderStats: ReturnType<typeof vi.fn> };
-  let mockBusinessService: { getSelectedBusinessId: ReturnType<typeof vi.fn> };
+  let mockOrderService: { getOrders: jasmine.Spy; getOrderStats: jasmine.Spy };
+  let mockBusinessService: { getSelectedBusinessId: jasmine.Spy };
 
   const mockStats = {
     total: 20, in_transit: 5, delivered: 10,
@@ -36,21 +36,21 @@ describe('DashboardComponent', () => {
 
   beforeEach(async () => {
     mockOrderService = {
-      getOrders: vi.fn(),
-      getOrderStats: vi.fn(),
+      getOrders: jasmine.createSpy('getOrders'),
+      getOrderStats: jasmine.createSpy('getOrderStats'),
     };
     mockBusinessService = {
-      getSelectedBusinessId: vi.fn(),
+      getSelectedBusinessId: jasmine.createSpy('getSelectedBusinessId'),
     };
 
-    mockBusinessService.getSelectedBusinessId.mockReturnValue(of(''));
-    mockOrderService.getOrderStats.mockReturnValue(of(mockStats));
-    mockOrderService.getOrders.mockReturnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
+    mockBusinessService.getSelectedBusinessId.and.returnValue(of(''));
+    mockOrderService.getOrderStats.and.returnValue(of(mockStats));
+    mockOrderService.getOrders.and.returnValue(of({ orders: mockOrders, total: 2, page: 1, limit: 10 }));
 
     await TestBed.configureTestingModule({
-      imports: [DashboardComponent],
+      imports: [RouterTestingModule, CommonModule],
+      declarations: [DashboardComponent],
       providers: [
-        provideRouter([]),
         { provide: OrderService, useValue: mockOrderService },
         { provide: BusinessService, useValue: mockBusinessService },
       ],
@@ -79,14 +79,14 @@ describe('DashboardComponent', () => {
 
   it('should call getOrders with limit 10', () => {
     expect(mockOrderService.getOrders).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10 })
+      jasmine.objectContaining({ limit: 10 })
     );
   });
 
   it('should call getOrderStats with businessId when business selected', async () => {
-    mockBusinessService.getSelectedBusinessId.mockReturnValue(of('biz-001'));
-    mockOrderService.getOrderStats.mockReturnValue(of(mockStats));
-    mockOrderService.getOrders.mockReturnValue(of({ orders: [], total: 0, page: 1, limit: 10 }));
+    mockBusinessService.getSelectedBusinessId.and.returnValue(of('biz-001'));
+    mockOrderService.getOrderStats.and.returnValue(of(mockStats));
+    mockOrderService.getOrders.and.returnValue(of({ orders: [], total: 0, page: 1, limit: 10 }));
 
     fixture = TestBed.createComponent(DashboardComponent);
     component = fixture.componentInstance;

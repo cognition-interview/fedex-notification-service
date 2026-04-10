@@ -1,6 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterLink, ActivatedRoute } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
 import { Order } from '../models/order.model';
@@ -9,10 +8,8 @@ import { ShipmentEvent } from '../models/shipment-event.model';
 
 @Component({
   selector: 'app-order-detail',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
   templateUrl: './order-detail.component.html',
-  styleUrl: './order-detail.component.scss',
+  styleUrls: ['./order-detail.component.scss'],
 })
 export class OrderDetailComponent implements OnInit {
   order: Order | null = null;

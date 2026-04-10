@@ -1,19 +1,14 @@
 import { ChangeDetectorRef, Component, OnInit, HostListener, ElementRef } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { BusinessService } from '../services/business.service';
 import { NotificationService } from '../services/notification.service';
 import { Business } from '../models/business.model';
 import { Notification } from '../models/notification.model';
-import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-layout',
-  standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule, FormsModule],
   templateUrl: './app-layout.component.html',
-  styleUrl: './app-layout.component.scss',
+  styleUrls: ['./app-layout.component.scss'],
 })
 export class AppLayoutComponent implements OnInit {
   businesses: Business[] = [];

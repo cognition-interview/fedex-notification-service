@@ -3,9 +3,8 @@
   <p>{{ total }} registered FedEx business account(s)</p>
 </div>
 
-@if (loading) {
-  <div class="no-data">Loading...</div>
-} @else {
+<div *ngIf="loading" class="no-data">Loading...</div>
+<ng-container *ngIf="!loading">
   <div class="card" style="padding: 0; overflow: hidden;">
     <table>
       <thead>
@@ -19,29 +18,25 @@
         </tr>
       </thead>
       <tbody>
-        @for (b of businesses; track b.id) {
-          <tr>
-            <td><strong>{{ b.name }}</strong></td>
-            <td class="monospace">{{ b.account_number }}</td>
-            <td>{{ b.address }}</td>
-            <td>{{ b.contact_email }}</td>
-            <td>{{ b.phone }}</td>
-            <td>
-              <button class="btn btn-sm btn-outline" (click)="viewOrders(b.id); $event.stopPropagation()">
-                View Orders →
-              </button>
-            </td>
-          </tr>
-        }
+        <tr *ngFor="let b of businesses">
+          <td><strong>{{ b.name }}</strong></td>
+          <td class="monospace">{{ b.account_number }}</td>
+          <td>{{ b.address }}</td>
+          <td>{{ b.contact_email }}</td>
+          <td>{{ b.phone }}</td>
+          <td>
+            <button class="btn btn-sm btn-outline" (click)="viewOrders(b.id); $event.stopPropagation()">
+              View Orders →
+            </button>
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>
 
-  @if (total > limit) {
-    <div class="pagination">
-      <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
-      <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
-      <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
-    </div>
-  }
-}
+  <div *ngIf="total > limit" class="pagination">
+    <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
+    <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
+    <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
+  </div>
+</ng-container>
