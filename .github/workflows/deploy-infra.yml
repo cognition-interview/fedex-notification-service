@@ -50,6 +50,12 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/communication.json \
             --output none
+          echo "Validating synapse.json..."
+          az deployment group validate \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/synapse.json \
+            --parameters synapseSqlAdminPassword="placeholder" \
+            --output none
           echo "All templates valid."
 
       - name: Check which resources already exist
@@ -88,6 +94,25 @@ jobs:
             echo "comm=missing" >> "$GITHUB_OUTPUT"
           fi
 
+          SYNAPSE_STORAGE_NAME=$(jq -r '.parameters.synapseStorageAccountName.value' infra/azuredeploy.parameters.json)
+          SYNAPSE_WS_NAME=$(jq -r '.parameters.synapseWorkspaceName.value' infra/azuredeploy.parameters.json)
+
+          if check "Microsoft.Storage/storageAccounts" "$SYNAPSE_STORAGE_NAME"; then
+            echo "  ✓ Synapse Storage ($SYNAPSE_STORAGE_NAME) exists"
+            echo "synapse_storage=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ✗ Synapse Storage ($SYNAPSE_STORAGE_NAME) missing"
+            echo "synapse_storage=missing" >> "$GITHUB_OUTPUT"
+          fi
+
+          if check "Microsoft.Synapse/workspaces" "$SYNAPSE_WS_NAME"; then
+            echo "  ✓ Synapse Workspace ($SYNAPSE_WS_NAME) exists"
+            echo "synapse_ws=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "  ✗ Synapse Workspace ($SYNAPSE_WS_NAME) missing"
+            echo "synapse_ws=missing" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: What-if preview (all templates)
         if: inputs.mode == 'what-if'
         run: |
@@ -106,6 +131,12 @@ jobs:
           az deployment group what-if \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/communication.json
+          echo ""
+          echo "=== Synapse ==="
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/synapse.json \
+            --parameters synapseSqlAdminPassword="placeholder"
 
       - name: Deploy ACR
         if: inputs.mode == 'deploy' && steps.check.outputs.acr == 'missing'
@@ -138,18 +169,32 @@ jobs:
             --template-file infra/communication.json \
             --output table
 
+      - name: Deploy Synapse
+        if: inputs.mode == 'deploy' && (steps.check.outputs.synapse_ws == 'missing' || steps.check.outputs.synapse_storage == 'missing')
+        run: |
+          echo "▶ Deploying Synapse (workspace + SQL pool + storage)..."
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "fedex-synapse-$(date +%Y%m%d-%H%M%S)" \
+            --template-file infra/synapse.json \
+            --parameters synapseSqlAdminPassword="${{ secrets.SYNAPSE_SQL_ADMIN_PASSWORD }}" \
+            --output table
+
       - name: Deploy summary
         if: inputs.mode == 'deploy'
         run: |
           echo "═══════════════════════════════════════════════════════════════════"
           if [[ "${{ steps.check.outputs.acr }}" == "exists" && \
                 "${{ steps.check.outputs.aks }}" == "exists" && \
-                "${{ steps.check.outputs.comm }}" == "exists" ]]; then
+                "${{ steps.check.outputs.comm }}" == "exists" && \
+                "${{ steps.check.outputs.synapse_ws }}" == "exists" && \
+                "${{ steps.check.outputs.synapse_storage }}" == "exists" ]]; then
             echo "  All resources already exist — nothing was deployed."
           else
             echo "  Deployment complete. Deployed:"
             [[ "${{ steps.check.outputs.acr }}" == "missing" ]] && echo "    - ACR"
             [[ "${{ steps.check.outputs.aks }}" == "missing" ]] && echo "    - AKS"
             [[ "${{ steps.check.outputs.comm }}" == "missing" ]] && echo "    - Communication Services"
+            [[ "${{ steps.check.outputs.synapse_ws }}" == "missing" || "${{ steps.check.outputs.synapse_storage }}" == "missing" ]] && echo "    - Synapse (workspace + SQL pool + storage)"
           fi
           echo "═══════════════════════════════════════════════════════════════════"
