@@ -1,8 +1,6 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { InsightsService } from '../services/insights.service';
 import { DeliveryInsights } from '../models/insight.model';
-import { BaseChartDirective } from 'ng2-charts';
 import { ChartData, ChartOptions } from 'chart.js';
 import { Chart, registerables } from 'chart.js';
 
@@ -10,10 +8,8 @@ Chart.register(...registerables);
 
 @Component({
   selector: 'app-insights',
-  standalone: true,
-  imports: [CommonModule, BaseChartDirective],
   templateUrl: './insights.component.html',
-  styleUrl: './insights.component.scss',
+  styleUrls: ['./insights.component.scss'],
 })
 export class InsightsComponent implements OnInit {
   insights: DeliveryInsights | null = null;
@@ -61,7 +57,6 @@ export class InsightsComponent implements OnInit {
   }
 
   private buildCharts(data: DeliveryInsights): void {
-    // Bar chart: avg delivery time by service
     this.barChartData = {
       labels: data.avg_delivery_time_by_service.map(d => d.service_type),
       datasets: [{
@@ -71,7 +66,6 @@ export class InsightsComponent implements OnInit {
       }],
     };
 
-    // Line chart: volume over 30 days
     this.lineChartData = {
       labels: data.delivery_volume_30d.map(d => d.date),
       datasets: [{
@@ -85,7 +79,6 @@ export class InsightsComponent implements OnInit {
       }],
     };
 
-    // Doughnut: delay breakdown
     this.doughnutChartData = {
       labels: data.delay_breakdown.map(d => d.reason),
       datasets: [{

@@ -3,7 +3,7 @@
   <p>Shipment tracking overview across all active orders</p>
 </div>
 
-@if (stats) {
+<ng-container *ngIf="stats">
   <div class="stats-grid">
     <div class="summary-card card-blue">
       <div class="card-label">Total Orders</div>
@@ -37,15 +37,13 @@
       <div class="card-value">{{ stats.exception }}</div>
     </div>
   </div>
-}
+</ng-container>
 
 <div class="card">
   <h3>Recent Orders</h3>
-  @if (loading) {
-    <div class="no-data">Loading...</div>
-  } @else if (recentOrders.length === 0) {
-    <div class="no-data">No orders found.</div>
-  } @else {
+  <div *ngIf="loading" class="no-data">Loading...</div>
+  <div *ngIf="!loading && recentOrders.length === 0" class="no-data">No orders found.</div>
+  <ng-container *ngIf="!loading && recentOrders.length > 0">
     <table>
       <thead>
         <tr>
@@ -57,19 +55,17 @@
         </tr>
       </thead>
       <tbody>
-        @for (order of recentOrders; track order.id) {
-          <tr [routerLink]="['/orders', order.id]">
-            <td class="tracking-num">{{ order.tracking_number }}</td>
-            <td>{{ order.origin }} → {{ order.destination }}</td>
-            <td><span [class]="statusClass(order.status)">{{ order.status }}</span></td>
-            <td>{{ order.service_type }}</td>
-            <td>{{ formatDate(order.estimated_delivery) }}</td>
-          </tr>
-        }
+        <tr *ngFor="let order of recentOrders" [routerLink]="['/orders', order.id]">
+          <td class="tracking-num">{{ order.tracking_number }}</td>
+          <td>{{ order.origin }} → {{ order.destination }}</td>
+          <td><span [class]="statusClass(order.status)">{{ order.status }}</span></td>
+          <td>{{ order.service_type }}</td>
+          <td>{{ formatDate(order.estimated_delivery) }}</td>
+        </tr>
       </tbody>
     </table>
     <div class="view-all">
       <a routerLink="/orders">View all orders →</a>
     </div>
-  }
+  </ng-container>
 </div>

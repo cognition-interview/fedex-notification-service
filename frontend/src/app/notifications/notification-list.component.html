@@ -3,9 +3,7 @@
     <h1>Notifications</h1>
     <p>{{ total }} notification(s)</p>
   </div>
-  @if (unreadCount > 0 && activeTab !== 'read') {
-    <button class="btn btn-sm btn-orange" (click)="markAllAsRead()">Mark All as Read</button>
-  }
+  <button *ngIf="unreadCount > 0 && activeTab !== 'read'" class="btn btn-sm btn-orange" (click)="markAllAsRead()">Mark All as Read</button>
 </div>
 
 <div class="tab-bar">
@@ -14,33 +12,23 @@
   <button class="tab" [class.active]="activeTab === 'read'" (click)="setTab('read')">Read</button>
 </div>
 
-@if (loading) {
-  <div class="no-data">Loading...</div>
-} @else if (notifications.length === 0) {
-  <div class="no-data">No notifications found.</div>
-} @else {
-  <div class="notif-list">
-    @for (n of notifications; track n.id) {
-      <div class="notif-item" [class.unread]="!n.is_read" (click)="markAsRead(n)">
-        <span class="notif-icon">{{ notifIcon(n.type) }}</span>
-        <div class="notif-body">
-          <div class="notif-message">{{ n.message }}</div>
-          <div class="notif-meta">
-            <span class="notif-time">{{ formatRelative(n.created_at) }}</span>
-            @if (!n.is_read) {
-              <span class="unread-dot">●</span>
-            }
-          </div>
-        </div>
+<div *ngIf="loading" class="no-data">Loading...</div>
+<div *ngIf="!loading && notifications.length === 0" class="no-data">No notifications found.</div>
+<div *ngIf="!loading && notifications.length > 0" class="notif-list">
+  <div *ngFor="let n of notifications" class="notif-item" [class.unread]="!n.is_read" (click)="markAsRead(n)">
+    <span class="notif-icon">{{ notifIcon(n.type) }}</span>
+    <div class="notif-body">
+      <div class="notif-message">{{ n.message }}</div>
+      <div class="notif-meta">
+        <span class="notif-time">{{ formatRelative(n.created_at) }}</span>
+        <span *ngIf="!n.is_read" class="unread-dot">●</span>
       </div>
-    }
+    </div>
   </div>
-}
+</div>
 
-@if (total > limit) {
-  <div class="pagination">
-    <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
-    <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
-    <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
-  </div>
-}
+<div *ngIf="total > limit" class="pagination">
+  <button class="btn btn-sm btn-outline" (click)="prevPage()" [disabled]="page === 1">← Prev</button>
+  <span>{{ pageStart }}–{{ pageEnd }} of {{ total }}</span>
+  <button class="btn btn-sm btn-outline" (click)="nextPage()" [disabled]="page >= totalPages">Next →</button>
+</div>

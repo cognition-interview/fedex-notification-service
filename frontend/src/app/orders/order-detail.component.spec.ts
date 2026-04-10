@@ -1,8 +1,8 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { RouterTestingModule } from '@angular/router/testing';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
-import { vi } from 'vitest';
 import { OrderDetailComponent } from './order-detail.component';
 import { OrderService } from '../services/order.service';
 import { BusinessService } from '../services/business.service';
@@ -10,8 +10,8 @@ import { BusinessService } from '../services/business.service';
 describe('OrderDetailComponent', () => {
   let fixture: ComponentFixture<OrderDetailComponent>;
   let component: OrderDetailComponent;
-  let mockOrderService: { getOrderById: ReturnType<typeof vi.fn> };
-  let mockBusinessService: { getBusinessById: ReturnType<typeof vi.fn> };
+  let mockOrderService: { getOrderById: jasmine.Spy };
+  let mockBusinessService: { getBusinessById: jasmine.Spy };
 
   const mockOrder = {
     id: 'ord-001', business_id: 'biz-001', tracking_number: '7489 2301 4456',
@@ -37,9 +37,9 @@ describe('OrderDetailComponent', () => {
 
   function createComponent(orderId = 'ord-001', order: any = mockOrder) {
     return TestBed.configureTestingModule({
-      imports: [OrderDetailComponent],
+      imports: [RouterTestingModule, CommonModule],
+      declarations: [OrderDetailComponent],
       providers: [
-        provideRouter([]),
         { provide: OrderService, useValue: mockOrderService },
         { provide: BusinessService, useValue: mockBusinessService },
         {
@@ -50,8 +50,8 @@ describe('OrderDetailComponent', () => {
         },
       ],
     }).compileComponents().then(() => {
-      mockOrderService.getOrderById.mockReturnValue(of(order));
-      mockBusinessService.getBusinessById.mockReturnValue(of(mockBusiness));
+      mockOrderService.getOrderById.and.returnValue(of(order));
+      mockBusinessService.getBusinessById.and.returnValue(of(mockBusiness));
       fixture = TestBed.createComponent(OrderDetailComponent);
       component = fixture.componentInstance;
       fixture.detectChanges();
@@ -61,10 +61,10 @@ describe('OrderDetailComponent', () => {
 
   beforeEach(async () => {
     mockOrderService = {
-      getOrderById: vi.fn(),
+      getOrderById: jasmine.createSpy('getOrderById'),
     };
     mockBusinessService = {
-      getBusinessById: vi.fn(),
+      getBusinessById: jasmine.createSpy('getBusinessById'),
     };
     await createComponent();
     fixture.detectChanges();
@@ -86,7 +86,7 @@ describe('OrderDetailComponent', () => {
   });
 
   it('should set notFound when order is undefined', async () => {
-    mockOrderService.getOrderById.mockReturnValue(of(undefined));
+    mockOrderService.getOrderById.and.returnValue(of(undefined));
     fixture = TestBed.createComponent(OrderDetailComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -98,13 +98,12 @@ describe('OrderDetailComponent', () => {
   it('should return sortedEvents in descending occurred_at order', () => {
     const sorted = component.sortedEvents;
     expect(sorted.length).toBe(3);
-    // Most recent first
     expect(sorted[0].event_type).toBe('Delivered');
     expect(sorted[2].event_type).toBe('Picked Up');
   });
 
   it('should return empty array for sortedEvents when no shipment_events', () => {
-    component.order = { ...mockOrder, shipment_events: undefined };
+    component.order = { ...mockOrder, shipment_events: undefined } as any;
     expect(component.sortedEvents).toEqual([]);
   });
 

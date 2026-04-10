@@ -1,14 +1,14 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { of } from 'rxjs';
-import { vi } from 'vitest';
 import { InsightsComponent } from './insights.component';
 import { InsightsService } from '../services/insights.service';
 
 describe('InsightsComponent', () => {
   let fixture: ComponentFixture<InsightsComponent>;
   let component: InsightsComponent;
-  let mockInsightsService: { getDeliveryInsights: ReturnType<typeof vi.fn> };
+  let mockInsightsService: { getDeliveryInsights: jasmine.Spy };
 
   const mockInsights = {
     avg_delivery_time_by_service: [
@@ -33,12 +33,13 @@ describe('InsightsComponent', () => {
 
   beforeEach(async () => {
     mockInsightsService = {
-      getDeliveryInsights: vi.fn(),
+      getDeliveryInsights: jasmine.createSpy('getDeliveryInsights'),
     };
-    mockInsightsService.getDeliveryInsights.mockReturnValue(of(mockInsights));
+    mockInsightsService.getDeliveryInsights.and.returnValue(of(mockInsights));
 
     await TestBed.configureTestingModule({
-      imports: [InsightsComponent],
+      imports: [CommonModule],
+      declarations: [InsightsComponent],
       providers: [
         { provide: InsightsService, useValue: mockInsightsService },
       ],
