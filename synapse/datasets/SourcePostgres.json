@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "type": "AzurePostgreSqlTable",
+    "linkedServiceName": {
+      "referenceName": "PostgresOnPrem",
+      "type": "LinkedServiceReference"
+    },
+    "typeProperties": {}
+  }
+}

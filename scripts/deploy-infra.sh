@@ -29,13 +29,16 @@ echo "  FedEx Notification Service — ARM Template Deployment"
 echo "═══════════════════════════════════════════════════════════════════"
 echo ""
 echo "  Resource Group : ${RESOURCE_GROUP}"
-echo "  Templates      : infra/acr.json, infra/aks.json, infra/communication.json"
+echo "  Templates      : infra/acr.json, infra/aks.json, infra/communication.json, infra/synapse.json"
 echo ""
 
 # ── Read resource names from parameters ──────────────────────────────────────
 ACR_NAME=$(jq -r '.parameters.acrName.value' "${PARAMETERS_FILE}")
 AKS_NAME=$(jq -r '.parameters.aksClusterName.value' "${PARAMETERS_FILE}")
 COMM_NAME=$(jq -r '.parameters.communicationServiceName.value' "${PARAMETERS_FILE}")
+SYNAPSE_STORAGE_NAME=$(jq -r '.parameters.synapseStorageAccountName.value' "${PARAMETERS_FILE}")
+SYNAPSE_WS_NAME=$(jq -r '.parameters.synapseWorkspaceName.value' "${PARAMETERS_FILE}")
+SYNAPSE_POOL_NAME=$(jq -r '.parameters.synapseSqlPoolName.value' "${PARAMETERS_FILE}")
 
 # ── Validate all templates ───────────────────────────────────────────────────
 echo "▶ Validating ARM templates..."
@@ -52,6 +55,11 @@ az deployment group validate \
   --resource-group "${RESOURCE_GROUP}" \
   --template-file "${REPO_ROOT}/infra/communication.json" \
   --output none
+az deployment group validate \
+  --resource-group "${RESOURCE_GROUP}" \
+  --template-file "${REPO_ROOT}/infra/synapse.json" \
+  --parameters synapseSqlAdminPassword="placeholder" \
+  --output none
 echo "  All templates valid."
 echo ""
 
@@ -65,6 +73,8 @@ echo "▶ Checking which resources already exist..."
 ACR_EXISTS=false
 AKS_EXISTS=false
 COMM_EXISTS=false
+SYNAPSE_STORAGE_EXISTS=false
+SYNAPSE_WS_EXISTS=false
 
 if resource_exists "Microsoft.ContainerRegistry/registries" "${ACR_NAME}"; then
   echo "  ✓ ACR (${ACR_NAME}) exists"
@@ -85,6 +95,20 @@ if resource_exists "Microsoft.Communication/communicationServices" "${COMM_NAME}
   COMM_EXISTS=true
 else
   echo "  ✗ Communication Services (${COMM_NAME}) missing"
+fi
+
+if resource_exists "Microsoft.Storage/storageAccounts" "${SYNAPSE_STORAGE_NAME}"; then
+  echo "  ✓ Synapse Storage (${SYNAPSE_STORAGE_NAME}) exists"
+  SYNAPSE_STORAGE_EXISTS=true
+else
+  echo "  ✗ Synapse Storage (${SYNAPSE_STORAGE_NAME}) missing"
+fi
+
+if resource_exists "Microsoft.Synapse/workspaces" "${SYNAPSE_WS_NAME}"; then
+  echo "  ✓ Synapse Workspace (${SYNAPSE_WS_NAME}) exists"
+  SYNAPSE_WS_EXISTS=true
+else
+  echo "  ✗ Synapse Workspace (${SYNAPSE_WS_NAME}) missing"
 fi
 echo ""
 
@@ -107,6 +131,12 @@ if [[ "${1:-}" == "--what-if" ]]; then
   az deployment group what-if \
     --resource-group "${RESOURCE_GROUP}" \
     --template-file "${REPO_ROOT}/infra/communication.json"
+  echo ""
+  echo "=== Synapse ==="
+  az deployment group what-if \
+    --resource-group "${RESOURCE_GROUP}" \
+    --template-file "${REPO_ROOT}/infra/synapse.json" \
+    --parameters synapseSqlAdminPassword="placeholder"
 else
   FORCE=false
   [[ "${1:-}" == "--force" ]] && FORCE=true
@@ -141,6 +171,18 @@ else
       --resource-group "${RESOURCE_GROUP}" \
       --name "fedex-comm-$(date +%Y%m%d-%H%M%S)" \
       --template-file "${REPO_ROOT}/infra/communication.json" \
+      --output table
+    echo ""
+    DEPLOYED=$((DEPLOYED + 1))
+  fi
+
+  if [[ "${SYNAPSE_WS_EXISTS}" == "false" ]] || [[ "${SYNAPSE_STORAGE_EXISTS}" == "false" ]] || [[ "${FORCE}" == "true" ]]; then
+    echo "▶ Deploying Synapse (workspace + SQL pool + storage)..."
+    az deployment group create \
+      --resource-group "${RESOURCE_GROUP}" \
+      --name "fedex-synapse-$(date +%Y%m%d-%H%M%S)" \
+      --template-file "${REPO_ROOT}/infra/synapse.json" \
+      --parameters synapseSqlAdminPassword="${SYNAPSE_SQL_ADMIN_PASSWORD:-}" \
       --output table
     echo ""
     DEPLOYED=$((DEPLOYED + 1))

@@ -128,6 +128,61 @@
       "metadata": {
         "description": "Whether to create the AcrPull role assignment for the AKS managed identity. Requires User Access Administrator or Owner permissions on the resource group. Set to false if the deploying principal lacks Microsoft.Authorization/roleAssignments/write."
       }
+    },
+    "synapseStorageAccountName": {
+      "type": "string",
+      "defaultValue": "fedexstorageus",
+      "metadata": {
+        "description": "Name of the Data Lake Gen2 storage account for Synapse."
+      }
+    },
+    "synapseFilesystemName": {
+      "type": "string",
+      "defaultValue": "synapse",
+      "metadata": {
+        "description": "Name of the Data Lake filesystem (container) for Synapse."
+      }
+    },
+    "synapseWorkspaceName": {
+      "type": "string",
+      "defaultValue": "fedexsynapseus",
+      "metadata": {
+        "description": "Name of the Azure Synapse Analytics workspace."
+      }
+    },
+    "synapseSqlAdminLogin": {
+      "type": "string",
+      "defaultValue": "sqladmin",
+      "metadata": {
+        "description": "SQL administrator login for the Synapse workspace."
+      }
+    },
+    "synapseSqlAdminPassword": {
+      "type": "secureString",
+      "metadata": {
+        "description": "SQL administrator password for the Synapse workspace. Pass at deploy time via --parameters."
+      }
+    },
+    "synapseSqlPoolName": {
+      "type": "string",
+      "defaultValue": "fedexpool",
+      "metadata": {
+        "description": "Name of the Synapse dedicated SQL pool."
+      }
+    },
+    "synapseSqlPoolSku": {
+      "type": "string",
+      "defaultValue": "DW100c",
+      "allowedValues": [
+        "DW100c",
+        "DW200c",
+        "DW300c",
+        "DW400c",
+        "DW500c"
+      ],
+      "metadata": {
+        "description": "Performance tier for the dedicated SQL pool."
+      }
     }
   },
   "variables": {
@@ -230,6 +285,78 @@
         "app": "fedex-notification-service",
         "managedBy": "arm-template"
       }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('synapseStorageAccountName')]",
+      "location": "[parameters('location')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "isHnsEnabled": true,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true,
+        "accessTier": "Hot"
+      },
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-01-01",
+      "name": "[concat(parameters('synapseStorageAccountName'), '/default/', parameters('synapseFilesystemName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('synapseStorageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Synapse/workspaces",
+      "apiVersion": "2021-06-01",
+      "name": "[parameters('synapseWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "defaultDataLakeStorage": {
+          "accountUrl": "[concat('https://', parameters('synapseStorageAccountName'), '.dfs.core.windows.net')]",
+          "filesystem": "[parameters('synapseFilesystemName')]"
+        },
+        "sqlAdministratorLogin": "[parameters('synapseSqlAdminLogin')]",
+        "sqlAdministratorLoginPassword": "[parameters('synapseSqlAdminPassword')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('synapseStorageAccountName'), 'default', parameters('synapseFilesystemName'))]"
+      ],
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Synapse/workspaces/sqlPools",
+      "apiVersion": "2021-06-01",
+      "name": "[concat(parameters('synapseWorkspaceName'), '/', parameters('synapseSqlPoolName'))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('synapseSqlPoolSku')]"
+      },
+      "properties": {
+        "collation": "SQL_Latin1_General_CP1_CI_AS",
+        "createMode": "Default"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Synapse/workspaces', parameters('synapseWorkspaceName'))]"
+      ],
+      "tags": {
+        "app": "fedex-notification-service",
+        "managedBy": "arm-template"
+      }
     }
   ],
   "outputs": {
@@ -252,6 +379,22 @@
     "communicationServiceHostname": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Communication/communicationServices', parameters('communicationServiceName'))).hostName]"
+    },
+    "synapseWorkspaceName": {
+      "type": "string",
+      "value": "[parameters('synapseWorkspaceName')]"
+    },
+    "synapseSqlEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Synapse/workspaces', parameters('synapseWorkspaceName'))).connectivityEndpoints.sql]"
+    },
+    "synapseSqlPoolName": {
+      "type": "string",
+      "value": "[parameters('synapseSqlPoolName')]"
+    },
+    "synapseStorageAccountName": {
+      "type": "string",
+      "value": "[parameters('synapseStorageAccountName')]"
     }
   }
 }
